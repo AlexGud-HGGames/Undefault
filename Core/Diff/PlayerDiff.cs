@@ -1,6 +1,6 @@
 namespace Core.Diff;
 
-public sealed record PlayerDiff(
+public sealed record ActivityDiff(
     bool PreviousIsAlive,
     bool CurrentIsAlive,
     bool IsAliveChanged,

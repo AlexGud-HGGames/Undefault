@@ -18,34 +18,55 @@ public sealed class SnapshotDiffer
             throw new ArgumentNullException(nameof(current));
         }
 
-        var previousPlayer = previous?.Player ?? PlayerSnapshot.Empty;
-        var currentPlayer = current.Player;
+        var previousVitals = previous?.GetModule<VitalsModule>();
+        var currentVitals = current.GetModule<VitalsModule>();
+        var previousPosition = previous?.GetModule<PositionModule>();
+        var currentPosition = current.GetModule<PositionModule>();
+        var previousCombat = previous?.GetModule<CombatModule>();
+        var currentCombat = current.GetModule<CombatModule>();
 
-        var distanceMoved = previousPlayer.Position.DistanceTo(currentPlayer.Position);
-        var didDealDamage = IsNewer(previousPlayer.LastDamageDealtAt, currentPlayer.LastDamageDealtAt);
-        var didReceiveDamage = IsNewer(previousPlayer.LastDamageReceivedAt, currentPlayer.LastDamageReceivedAt);
+        var previousHealth = previousVitals?.Health ?? 0;
+        var currentHealth = currentVitals?.Health ?? 0;
+        var previousArmor = previousVitals?.Armor ?? 0;
+        var currentArmor = currentVitals?.Armor ?? 0;
+        var previousIsAlive = previousVitals?.IsAlive ?? false;
+        var currentIsAlive = currentVitals?.IsAlive ?? false;
 
-        var hasActivity = currentPlayer.IsMoving
-            || currentPlayer.InCombatHint
+        var previousPositionVector = previousPosition?.Position ?? Vector3.Zero;
+        var currentPositionVector = currentPosition?.Position ?? Vector3.Zero;
+        var distanceMoved = previousPositionVector.DistanceTo(currentPositionVector);
+
+        var previousIsMoving = previousPosition?.IsMoving ?? false;
+        var currentIsMoving = currentPosition?.IsMoving ?? false;
+        var previousInCombatHint = previousCombat?.InCombatHint ?? false;
+        var currentInCombatHint = currentCombat?.InCombatHint ?? false;
+
+        var didDealDamage = IsNewer(previousCombat?.LastDamageDealtAt, currentCombat?.LastDamageDealtAt);
+        var didReceiveDamage = IsNewer(previousCombat?.LastDamageReceivedAt, currentCombat?.LastDamageReceivedAt)
+            || currentHealth < previousHealth
+            || currentArmor < previousArmor;
+
+        var hasActivity = currentIsMoving
+            || currentInCombatHint
             || didDealDamage
             || didReceiveDamage
             || distanceMoved >= _movementThreshold;
 
-        var playerDiff = new PlayerDiff(
-            PreviousIsAlive: previousPlayer.IsAlive,
-            CurrentIsAlive: currentPlayer.IsAlive,
-            IsAliveChanged: previousPlayer.IsAlive != currentPlayer.IsAlive,
-            HealthDelta: currentPlayer.Health - previousPlayer.Health,
-            ArmorDelta: currentPlayer.Armor - previousPlayer.Armor,
+        var activityDiff = new ActivityDiff(
+            PreviousIsAlive: previousIsAlive,
+            CurrentIsAlive: currentIsAlive,
+            IsAliveChanged: previousIsAlive != currentIsAlive,
+            HealthDelta: currentHealth - previousHealth,
+            ArmorDelta: currentArmor - previousArmor,
             DistanceMoved: distanceMoved,
-            IsMovingChanged: previousPlayer.IsMoving != currentPlayer.IsMoving,
-            InCombatHintChanged: previousPlayer.InCombatHint != currentPlayer.InCombatHint,
+            IsMovingChanged: previousIsMoving != currentIsMoving,
+            InCombatHintChanged: previousInCombatHint != currentInCombatHint,
             DidDealDamage: didDealDamage,
             DidReceiveDamage: didReceiveDamage,
             HasActivity: hasActivity
         );
 
-        return new SnapshotDiff(previous, current, playerDiff);
+        return new SnapshotDiff(previous, current, activityDiff);
     }
 
     private static bool IsNewer(DateTimeOffset? previous, DateTimeOffset? current)

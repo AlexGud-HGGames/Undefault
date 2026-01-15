@@ -7,40 +7,52 @@
         <StackPanel Spacing="16" Margin="16">
             <TextBlock Text="Settings" FontSize="20" FontWeight="SemiBold" />
 
-            <GroupBox Header="GSI Host">
-                <StackPanel Spacing="8" Margin="12">
-                    <TextBlock Text="Endpoint" />
-                    <TextBox Text="{Binding GsiHost}" Width="320" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="Start" />
-                        <Button Content="Stop" />
+            <StackPanel Spacing="6">
+                <TextBlock Text="GSI Host" FontWeight="SemiBold" />
+                <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="4" Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Endpoint" />
+                        <TextBox Text="{Binding GsiHost}" Width="320" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="Start" />
+                            <Button Content="Stop" />
+                        </StackPanel>
                     </StackPanel>
-                </StackPanel>
-            </GroupBox>
+                </Border>
+            </StackPanel>
 
-            <GroupBox Header="Rules &amp; Profiles">
-                <StackPanel Spacing="8" Margin="12">
-                    <TextBlock Text="Game" />
-                    <TextBox Text="{Binding SelectedGame}" Width="200" />
-                    <TextBlock Text="Active profile" />
-                    <TextBox Text="{Binding ActiveProfile}" Width="240" />
-                </StackPanel>
-            </GroupBox>
+            <StackPanel Spacing="6">
+                <TextBlock Text="Rules &amp; Profiles" FontWeight="SemiBold" />
+                <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="4" Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Game" />
+                        <TextBox Text="{Binding SelectedGame}" Width="200" />
+                        <TextBlock Text="Active profile" />
+                        <TextBox Text="{Binding ActiveProfile}" Width="240" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
 
-            <GroupBox Header="Spotify">
-                <StackPanel Spacing="8" Margin="12">
-                    <TextBlock Text="Auth status" />
-                    <TextBlock Text="{Binding SpotifyAuthStatus}" />
-                    <Button Content="Connect Spotify" Width="180" />
-                </StackPanel>
-            </GroupBox>
+            <StackPanel Spacing="6">
+                <TextBlock Text="Spotify" FontWeight="SemiBold" />
+                <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="4" Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Auth status" />
+                        <TextBlock Text="{Binding SpotifyAuthStatus}" />
+                        <Button Content="Connect Spotify" Width="180" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
 
-            <GroupBox Header="UX">
-                <StackPanel Spacing="6" Margin="12">
-                    <CheckBox Content="Start with Windows" IsChecked="{Binding AutoStart}" />
-                    <CheckBox Content="Minimize to tray" IsChecked="{Binding MinimizeToTray}" />
-                </StackPanel>
-            </GroupBox>
+            <StackPanel Spacing="6">
+                <TextBlock Text="UX" FontWeight="SemiBold" />
+                <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="4" Padding="12">
+                    <StackPanel Spacing="6">
+                        <CheckBox Content="Start with Windows" IsChecked="{Binding AutoStart}" />
+                        <CheckBox Content="Minimize to tray" IsChecked="{Binding MinimizeToTray}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

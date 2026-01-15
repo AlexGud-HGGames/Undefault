@@ -5,7 +5,7 @@ namespace Core.Diff;
 public sealed record SnapshotDiff(
     GameSnapshot? Previous,
     GameSnapshot Current,
-    PlayerDiff Player
+    ActivityDiff Activity
 )
 {
     public bool IsFirstSnapshot => Previous is null;

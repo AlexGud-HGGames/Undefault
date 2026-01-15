@@ -37,7 +37,7 @@ public sealed class EventDetector
             return events;
         }
 
-        if (diff.Player.HasActivity)
+        if (diff.Activity.HasActivity)
         {
             _lastActivityAt = timestamp;
         }
@@ -98,25 +98,28 @@ public sealed class EventDetector
 
     private bool IsDeath(SnapshotDiff diff)
     {
-        return diff.Player.PreviousIsAlive && !diff.Player.CurrentIsAlive;
+        return diff.Activity.PreviousIsAlive && !diff.Activity.CurrentIsAlive;
     }
 
     private bool IsCombatCondition(SnapshotDiff diff, GameSnapshot snapshot)
     {
-        return diff.Player.DidDealDamage
-            || diff.Player.DidReceiveDamage
-            || snapshot.Player.InCombatHint;
+        var combat = snapshot.GetModule<CombatModule>();
+        return diff.Activity.DidDealDamage
+            || diff.Activity.DidReceiveDamage
+            || (combat?.InCombatHint ?? false);
     }
 
     private bool IsIdleCondition(SnapshotDiff diff, GameSnapshot snapshot)
     {
-        if (!snapshot.Player.IsAlive)
+        var vitals = snapshot.GetModule<VitalsModule>();
+        if (!(vitals?.IsAlive ?? false))
         {
             return false;
         }
 
-        var isMoving = snapshot.Player.IsMoving
-            || diff.Player.DistanceMoved >= _options.MovementThreshold;
+        var position = snapshot.GetModule<PositionModule>();
+        var isMoving = (position?.IsMoving ?? false)
+            || diff.Activity.DistanceMoved >= _options.MovementThreshold;
 
         if (isMoving || IsCombatCondition(diff, snapshot))
         {

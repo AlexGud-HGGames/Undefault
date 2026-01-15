@@ -11,7 +11,7 @@ public sealed record EventContext(
         return new EventContext(
             snapshot.GameId,
             snapshot.MatchId,
-            snapshot.Player.PlayerId
+            snapshot.PlayerId
         );
     }
 }
