@@ -1,4 +1,5 @@
 using Core.Actions;
+using Core.Actions.Spotify;
 using Core.Diff;
 using Core.Models;
 using Core.Rules;
@@ -26,12 +27,14 @@ BuildSpotify(builder);
 
 builder.Services.Configure<RulesEngineOptions>(options =>
 {
-    options.ActionMap[EventType.Death] = new() { "log" };
-    options.ActionMap[EventType.Combat] = new() { "log" };
-    options.ActionMap[EventType.Idle] = new() { "log" };
+    // CS2 rules: Death → pause, Combat → play, Idle → resume
+    options.ActionMap[EventType.Death] = new() { "log", "spotify.pause" };
+    options.ActionMap[EventType.Combat] = new() { "log", "spotify.play" };
+    options.ActionMap[EventType.Idle] = new() { "log", "spotify.resume" };
 });
 
 builder.Services.Configure<SpotifyClientOptions>(builder.Configuration.GetSection("Spotify"));
+builder.Services.Configure<SpotifyActionOptions>(builder.Configuration.GetSection("SpotifyActions"));
 
 var app = builder.Build();
 
@@ -53,4 +56,10 @@ void BuildSpotify(WebApplicationBuilder webApplicationBuilder)
     webApplicationBuilder.Services.AddSingleton<ITokenStorage, InMemoryTokenStorage>();
     webApplicationBuilder.Services.AddSingleton<SpotifyOAuthService>();
     webApplicationBuilder.Services.AddSingleton<ISpotifyClient, SpotifyClient>();
+
+    // Spotify actions
+    webApplicationBuilder.Services.AddSingleton<IEventAction, SpotifyPauseAction>();
+    webApplicationBuilder.Services.AddSingleton<IEventAction, SpotifyPlayAction>();
+    webApplicationBuilder.Services.AddSingleton<IEventAction, SpotifyResumeAction>();
+    webApplicationBuilder.Services.AddSingleton<IEventAction, SpotifySetVolumeAction>();
 }
