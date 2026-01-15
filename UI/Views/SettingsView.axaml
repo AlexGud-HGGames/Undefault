@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:UI.ViewModels"
+             x:Class="UI.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+    <ScrollViewer>
+        <StackPanel Spacing="16" Margin="16">
+            <TextBlock Text="Settings" FontSize="20" FontWeight="SemiBold" />
+
+            <GroupBox Header="GSI Host">
+                <StackPanel Spacing="8" Margin="12">
+                    <TextBlock Text="Endpoint" />
+                    <TextBox Text="{Binding GsiHost}" Width="320" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="Start" />
+                        <Button Content="Stop" />
+                    </StackPanel>
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Header="Rules &amp; Profiles">
+                <StackPanel Spacing="8" Margin="12">
+                    <TextBlock Text="Game" />
+                    <TextBox Text="{Binding SelectedGame}" Width="200" />
+                    <TextBlock Text="Active profile" />
+                    <TextBox Text="{Binding ActiveProfile}" Width="240" />
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Header="Spotify">
+                <StackPanel Spacing="8" Margin="12">
+                    <TextBlock Text="Auth status" />
+                    <TextBlock Text="{Binding SpotifyAuthStatus}" />
+                    <Button Content="Connect Spotify" Width="180" />
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Header="UX">
+                <StackPanel Spacing="6" Margin="12">
+                    <CheckBox Content="Start with Windows" IsChecked="{Binding AutoStart}" />
+                    <CheckBox Content="Minimize to tray" IsChecked="{Binding MinimizeToTray}" />
+                </StackPanel>
+            </GroupBox>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

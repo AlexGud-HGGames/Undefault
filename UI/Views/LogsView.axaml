@@ -1,0 +1,12 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:UI.ViewModels"
+             x:Class="UI.Views.LogsView"
+             x:DataType="vm:LogsViewModel">
+    <Grid RowDefinitions="Auto,*" Margin="16">
+        <TextBlock Text="Logs" FontSize="20" FontWeight="SemiBold" />
+        <Border Grid.Row="1" Margin="0,12,0,0" BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="4">
+            <ListBox Items="{Binding Entries}" />
+        </Border>
+    </Grid>
+</UserControl>
