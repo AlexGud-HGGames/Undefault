@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 
 namespace Core.Models;
 
@@ -8,9 +7,6 @@ public sealed record StatusSnapshot(
     DateTimeOffset? LastSnapshotAt,
     string Game,
     NormalizedEvent? LastEvent,
-    string? LastAction,
-    IReadOnlyDictionary<string, TimeSpan>? Cooldowns,
     string SpotifyStatus,
-    string PlaybackState,
-    string? Track
+    string PlaybackState
 );

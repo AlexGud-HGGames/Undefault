@@ -127,12 +127,15 @@ EventDetector работает с модулями
 ### 📍 Этап 4: Rules → Spotify Integration
 **Цель:** Связать Rules Engine с Spotify actions
 
-**Задачи:**
-- Agent A: Реализация Spotify actions в RulesEngine
-- Agent A: Конфигурация правил (death → pause, combat → specific playlist, idle → resume)
-- Agent A: Обработка ошибок Spotify API
+**Задачи (вариант A — config-only):**
+- Agent A: Перенести `RulesEngineOptions.ActionMap` в `GsiHost/appsettings.json`
+- Agent A: Удалить хардкод маппинга из `GsiHost/Program.cs`
+- Agent A: Биндинг `RulesEngineOptions` только через конфиг
+- Agent A: Обработка ошибок Spotify API (логирование, без падений)
 
 **Definition of Done:**
+- ActionMap читается из конфигурации
+- `Program.cs` не содержит доменной логики правил
 - События из игры триггерят Spotify actions
 - Правила работают end-to-end: GSI → Event → Rule → Spotify
 - Ошибки Spotify API обрабатываются gracefully

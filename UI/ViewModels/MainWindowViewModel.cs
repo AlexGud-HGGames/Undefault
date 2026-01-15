@@ -2,11 +2,11 @@ namespace UI.ViewModels;
 
 public class MainWindowViewModel : ViewModelBase
 {
-    public MainWindowViewModel()
+    public MainWindowViewModel(StatusViewModel status, SettingsViewModel settings, LogsViewModel logs)
     {
-        Status = new StatusViewModel();
-        Settings = new SettingsViewModel();
-        Logs = new LogsViewModel();
+        Status = status;
+        Settings = settings;
+        Logs = logs;
     }
 
     public StatusViewModel Status { get; }

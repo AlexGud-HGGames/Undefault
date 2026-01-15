@@ -5,6 +5,7 @@ namespace Core.Services;
 
 public interface IAppStateService
 {
-    IObservable<StatusSnapshot> StatusStream { get; }
-    IObservable<EventLogEntry> LogStream { get; }
+    IObservable<StatusSnapshot> StatusSnapshot { get; }
+    IObservable<NormalizedEvent> Events { get; }
+    Task<StatusSnapshot> GetCurrentStatusAsync(CancellationToken cancellationToken = default);
 }

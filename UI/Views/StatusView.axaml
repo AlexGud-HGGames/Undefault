@@ -6,6 +6,8 @@
     <ScrollViewer>
         <StackPanel Spacing="16" Margin="16">
             <TextBlock Text="Status" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="Loading status..." Opacity="0.7" IsVisible="{Binding IsLoading}" />
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="Tomato" IsVisible="{Binding HasError}" />
 
             <StackPanel Spacing="6">
                 <TextBlock Text="GSI" FontWeight="SemiBold" />
