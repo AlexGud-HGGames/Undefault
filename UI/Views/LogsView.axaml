@@ -11,7 +11,7 @@
                     <DataTemplate>
                         <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8" Margin="8,4">
                             <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm:ss}}" Opacity="0.7" />
-                            <TextBlock Text="{Binding EventType}" FontWeight="SemiBold" />
+                            <TextBlock Grid.Column="0" Text="{Binding EventType}" FontWeight="SemiBold" />
                             <TextBlock Grid.Column="2" Text="{Binding Message}" />
                         </Grid>
                     </DataTemplate>

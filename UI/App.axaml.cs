@@ -3,6 +3,7 @@ using System.Net.Http;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Core.Configuration;
 using Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using UI.Services;
@@ -48,5 +49,7 @@ public partial class App : Application
 
         services.AddSingleton(httpClient);
         services.AddSingleton<IAppStateService, PollingAppStateService>();
+        services.AddSingleton<IConfigurationService, HttpConfigurationService>();
+        services.AddSingleton<ISpotifyAuthService, SpotifyAuthServiceClient>();
     }
 }

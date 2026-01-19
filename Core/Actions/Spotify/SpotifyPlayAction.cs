@@ -45,11 +45,26 @@ public sealed class SpotifyPlayAction : AsyncEventActionBase
 
     private string? GetUriForEvent(NormalizedEvent normalizedEvent)
     {
-        if (_options.EventPlaylistMap.TryGetValue(normalizedEvent.Type, out var uri))
+        if (_options.EventPlaylistMap.TryGetValue(normalizedEvent.Type, out var uris))
         {
-            return uri;
+            return ChooseUri(uris);
         }
 
-        return _options.DefaultPlaylistUri;
+        return ChooseUri(_options.DefaultPlaylistUris);
+    }
+
+    private static string? ChooseUri(IReadOnlyList<string>? uris)
+    {
+        if (uris is null || uris.Count == 0)
+        {
+            return null;
+        }
+
+        if (uris.Count == 1)
+        {
+            return uris[0];
+        }
+
+        return uris[Random.Shared.Next(uris.Count)];
     }
 }

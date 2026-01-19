@@ -1,8 +1,7 @@
-using System.Threading;
 using Core.Actions;
 using Core.Actions.Spotify;
+using Core.Configuration;
 using Core.Diff;
-using Core.Models;
 using Core.Rules;
 using Core.Services;
 using Core.Spotify;
@@ -23,6 +22,7 @@ builder.Services.AddSingleton<IRulesEngine, RulesEngine>();
 builder.Services.AddSingleton<GsiProcessingService>();
 builder.Services.AddSingleton<AppStateService>();
 builder.Services.AddSingleton<IAppStateService>(sp => sp.GetRequiredService<AppStateService>());
+builder.Services.AddSingleton<IConfigurationService, AppSettingsConfigurationService>();
 builder.Services.AddSingleton<ISnapshotModuleMapper, VitalsModuleMapper>();
 builder.Services.AddSingleton<ISnapshotModuleMapper, PositionModuleMapper>();
 builder.Services.AddSingleton<ISnapshotModuleMapper, CombatModuleMapper>();
@@ -52,9 +52,41 @@ app.MapGet("/status", async (IAppStateService appStateService, CancellationToken
     return Results.Ok(status);
 });
 
-app.MapGet("/events", (AppStateService appStateService) =>
+app.MapGet("/events", (AppStateService appStateService) => Results.Ok((object?)appStateService.GetRecentEvents()));
+
+app.MapGet("/config", async (IConfigurationService configService, CancellationToken cancellationToken) =>
 {
-    return Results.Ok(appStateService.GetRecentEvents());
+    var config = await configService.GetAsync(cancellationToken);
+    return Results.Ok(config);
+});
+
+app.MapPut("/config", async (AppConfig config, IConfigurationService configService, CancellationToken cancellationToken) =>
+{
+    await configService.SaveAsync(config, cancellationToken);
+    return Results.NoContent();
+});
+
+app.MapGet("/spotify/authorize", (SpotifyOAuthService oauthService) =>
+{
+    var state = Guid.NewGuid().ToString("N");
+    var url = oauthService.GetAuthorizationUrl(state);
+    return Results.Ok(new { url, state });
+});
+
+app.MapGet("/spotify/callback", async (
+    string code,
+    SpotifyOAuthService oauthService,
+    ITokenStorage tokenStorage,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(code))
+    {
+        return Results.BadRequest("Missing authorization code.");
+    }
+
+    var result = await oauthService.ExchangeCodeForTokenAsync(code, cancellationToken);
+    await tokenStorage.SaveTokensAsync(result.AccessToken, result.RefreshToken, result.ExpiresAt, cancellationToken);
+    return Results.Ok("Spotify authorized. You can close this window.");
 });
 
 app.Run();
