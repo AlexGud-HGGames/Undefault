@@ -1,8 +1,11 @@
+using System;
+using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Core.Configuration;
-using Core.Models;
 using Microsoft.Extensions.Logging;
 
 namespace GsiHost.Services;
@@ -24,20 +27,19 @@ public sealed class AppSettingsConfigurationService : IConfigurationService
         _logger = logger;
     }
 
-    public async Task<AppConfig> GetAsync(CancellationToken cancellationToken = default)
+    public async Task<SystemConfig> GetAsync(CancellationToken cancellationToken = default)
     {
         await _mutex.WaitAsync(cancellationToken);
         try
         {
             var root = await ReadRootAsync(cancellationToken);
-            var rulesEngine = ParseRulesEngine(root);
             var spotify = ParseSpotify(root);
-            var spotifyActions = ParseSpotifyActions(root);
+            var useMockSpotify = root["UseMockSpotify"]?.GetValue<bool>() ?? false;
 
             var url = _configuration["Urls"] ?? _configuration["ASPNETCORE_URLS"];
-            var gsiEndpoint = new GsiEndpointInfo("POST", "/gsi", url);
+            var gsi = new GsiConfig("POST", "/gsi", url);
 
-            return new AppConfig(rulesEngine, spotify, spotifyActions, gsiEndpoint);
+            return new SystemConfig(spotify, gsi, useMockSpotify);
         }
         finally
         {
@@ -45,22 +47,18 @@ public sealed class AppSettingsConfigurationService : IConfigurationService
         }
     }
 
-    public async Task SaveAsync(AppConfig config, CancellationToken cancellationToken = default)
+    public async Task SaveAsync(SystemConfig config, CancellationToken cancellationToken = default)
     {
         if (config is null)
         {
             throw new ArgumentNullException(nameof(config));
         }
 
-        Validate(config);
-
         await _mutex.WaitAsync(cancellationToken);
         try
         {
             var root = await ReadRootAsync(cancellationToken);
-
-            root["RulesEngine"] = BuildRulesEngineNode(config.RulesEngine);
-            root["SpotifyActions"] = BuildSpotifyActionsNode(config.SpotifyActions);
+            root["UseMockSpotify"] = config.UseMockSpotify;
 
             var spotifyNode = root["Spotify"] as JsonObject ?? new JsonObject();
             var clientSecret = spotifyNode["ClientSecret"]?.GetValue<string>();
@@ -96,151 +94,20 @@ public sealed class AppSettingsConfigurationService : IConfigurationService
         return node as JsonObject ?? new JsonObject();
     }
 
-    private static RulesEngineConfig ParseRulesEngine(JsonObject root)
-    {
-        var map = new Dictionary<EventType, List<string>>();
-        var rulesNode = root["RulesEngine"] as JsonObject;
-        var actionMapNode = rulesNode?["ActionMap"] as JsonObject;
-        if (actionMapNode is not null)
-        {
-            foreach (var (key, value) in actionMapNode)
-            {
-                if (!Enum.TryParse<EventType>(key, true, out var eventType))
-                {
-                    continue;
-                }
-
-                var list = new List<string>();
-                if (value is JsonArray array)
-                {
-                    foreach (var item in array)
-                    {
-                        var action = item?.GetValue<string>();
-                        if (!string.IsNullOrWhiteSpace(action))
-                        {
-                            list.Add(action);
-                        }
-                    }
-                }
-
-                map[eventType] = list;
-            }
-        }
-
-        return new RulesEngineConfig(map);
-    }
-
-    private static SpotifyPublicConfig ParseSpotify(JsonObject root)
+    private static SpotifySystemConfig ParseSpotify(JsonObject root)
     {
         var spotifyNode = root["Spotify"] as JsonObject;
         var clientId = spotifyNode?["ClientId"]?.GetValue<string>() ?? string.Empty;
         var redirectUri = spotifyNode?["RedirectUri"]?.GetValue<string>() ?? string.Empty;
+        var clientSecret = spotifyNode?["ClientSecret"]?.GetValue<string>();
         var scopes = spotifyNode?["Scopes"] is JsonArray scopesArray
-            ? scopesArray.Select(item => item?.GetValue<string>() ?? string.Empty)
+            ? scopesArray
+                .Select(item => item?.GetValue<string>() ?? string.Empty)
                 .Where(item => !string.IsNullOrWhiteSpace(item))
                 .ToArray()
             : Array.Empty<string>();
 
-        return new SpotifyPublicConfig(clientId, redirectUri, scopes);
-    }
-
-    private static SpotifyActionsConfig ParseSpotifyActions(JsonObject root)
-    {
-        var playlistMap = new Dictionary<EventType, List<string>>();
-        var volumeMap = new Dictionary<EventType, int>();
-
-        var actionsNode = root["SpotifyActions"] as JsonObject;
-        var playlistNode = actionsNode?["EventPlaylistMap"] as JsonObject;
-        if (playlistNode is not null)
-        {
-            foreach (var (key, value) in playlistNode)
-            {
-                if (!Enum.TryParse<EventType>(key, true, out var eventType))
-                {
-                    continue;
-                }
-
-                var uris = ParseStringList(value);
-                if (uris.Count > 0)
-                {
-                    playlistMap[eventType] = uris;
-                }
-            }
-        }
-
-        var volumeNode = actionsNode?["EventVolumeMap"] as JsonObject;
-        if (volumeNode is not null)
-        {
-            foreach (var (key, value) in volumeNode)
-            {
-                if (!Enum.TryParse<EventType>(key, true, out var eventType))
-                {
-                    continue;
-                }
-
-                if (value is JsonValue jsonValue && jsonValue.TryGetValue<int>(out var volume))
-                {
-                    volumeMap[eventType] = volume;
-                }
-            }
-        }
-
-        var defaultPlaylists = ParseStringList(actionsNode?["DefaultPlaylistUris"]);
-        if (defaultPlaylists.Count == 0)
-        {
-            defaultPlaylists = ParseStringList(actionsNode?["DefaultPlaylistUri"]);
-        }
-        var defaultVolume = actionsNode?["DefaultVolume"]?.GetValue<int?>();
-
-        return new SpotifyActionsConfig(
-            playlistMap,
-            volumeMap,
-            defaultPlaylists,
-            defaultVolume
-        );
-    }
-
-    private static JsonObject BuildRulesEngineNode(RulesEngineConfig config)
-    {
-        var actionMapNode = new JsonObject();
-        foreach (var (eventType, actions) in config.ActionMap)
-        {
-            var array = new JsonArray();
-            foreach (var action in actions)
-            {
-                array.Add(action);
-            }
-
-            actionMapNode[eventType.ToString()] = array;
-        }
-
-        return new JsonObject
-        {
-            ["ActionMap"] = actionMapNode
-        };
-    }
-
-    private static JsonObject BuildSpotifyActionsNode(SpotifyActionsConfig config)
-    {
-        var playlistNode = new JsonObject();
-        foreach (var (eventType, uris) in config.EventPlaylistMap)
-        {
-            playlistNode[eventType.ToString()] = BuildStringArrayNode(uris);
-        }
-
-        var volumeNode = new JsonObject();
-        foreach (var (eventType, volume) in config.EventVolumeMap)
-        {
-            volumeNode[eventType.ToString()] = volume;
-        }
-
-        return new JsonObject
-        {
-            ["EventPlaylistMap"] = playlistNode,
-            ["EventVolumeMap"] = volumeNode,
-            ["DefaultPlaylistUris"] = BuildStringArrayNode(config.DefaultPlaylistUris),
-            ["DefaultVolume"] = config.DefaultVolume is null ? null : JsonValue.Create(config.DefaultVolume)
-        };
+        return new SpotifySystemConfig(clientId, redirectUri, scopes, clientSecret);
     }
 
     private static JsonArray BuildStringArrayNode(IEnumerable<string> values)
@@ -252,47 +119,5 @@ public sealed class AppSettingsConfigurationService : IConfigurationService
         }
 
         return array;
-    }
-
-    private static List<string> ParseStringList(JsonNode? node)
-    {
-        if (node is null)
-        {
-            return new List<string>();
-        }
-
-        if (node is JsonArray array)
-        {
-            return array
-                .Select(item => item?.GetValue<string>() ?? string.Empty)
-                .Where(value => !string.IsNullOrWhiteSpace(value))
-                .ToList();
-        }
-
-        if (node is JsonValue valueNode && valueNode.TryGetValue<string>(out var value))
-        {
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                return new List<string> { value };
-            }
-        }
-
-        return new List<string>();
-    }
-
-    private static void Validate(AppConfig config)
-    {
-        foreach (var volume in config.SpotifyActions.EventVolumeMap.Values)
-        {
-            if (volume is < 0 or > 100)
-            {
-                throw new ArgumentOutOfRangeException(nameof(config), "Volume must be between 0 and 100");
-            }
-        }
-
-        if (config.SpotifyActions.DefaultVolume is < 0 or > 100)
-        {
-            throw new ArgumentOutOfRangeException(nameof(config), "Default volume must be between 0 and 100");
-        }
     }
 }

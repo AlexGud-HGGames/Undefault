@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows.Input;
+using Core.Configuration;
 using Core.Models;
 
 namespace UI.ViewModels;
@@ -11,10 +13,8 @@ public sealed class EventSettingsViewModel : ViewModelBase
     public EventSettingsViewModel(EventType eventType)
     {
         EventType = eventType;
-        ActionKeys = new ObservableCollection<EditableStringItem>();
         PlaylistUris = new ObservableCollection<EditableStringItem>();
 
-        AddActionKeyCommand = new DelegateCommand(() => ActionKeys.Add(CreateItem(string.Empty, ActionKeys)));
         AddPlaylistUriCommand = new DelegateCommand(() => PlaylistUris.Add(CreateItem(string.Empty, PlaylistUris)));
     }
 
@@ -22,21 +22,22 @@ public sealed class EventSettingsViewModel : ViewModelBase
 
     public string Title => EventType.ToString();
 
-    public ObservableCollection<EditableStringItem> ActionKeys { get; }
-
     public ObservableCollection<EditableStringItem> PlaylistUris { get; }
-
-    public ICommand AddActionKeyCommand { get; }
 
     public ICommand AddPlaylistUriCommand { get; }
 
-    public void SetActionKeys(IEnumerable<string> values)
+    public Array AvailableActions => Enum.GetValues<EventAction>();
+
+    public EventAction SelectedAction
     {
-        ActionKeys.Clear();
-        foreach (var value in values)
-        {
-            ActionKeys.Add(CreateItem(value, ActionKeys));
-        }
+        get => _selectedAction;
+        set => SetField(ref _selectedAction, value);
+    }
+
+    public string VolumeText
+    {
+        get => _volumeText;
+        set => SetField(ref _volumeText, value);
     }
 
     public void SetPlaylistUris(IEnumerable<string> values)
@@ -48,14 +49,6 @@ public sealed class EventSettingsViewModel : ViewModelBase
         }
     }
 
-    public List<string> GetActionKeys()
-    {
-        return ActionKeys
-            .Select(item => item.Value.Trim())
-            .Where(item => !string.IsNullOrWhiteSpace(item))
-            .ToList();
-    }
-
     public List<string> GetPlaylistUris()
     {
         return PlaylistUris
@@ -64,8 +57,27 @@ public sealed class EventSettingsViewModel : ViewModelBase
             .ToList();
     }
 
+    public void SetRule(EventRule rule)
+    {
+        SelectedAction = rule.Action;
+        VolumeText = rule.Volume?.ToString() ?? string.Empty;
+        SetPlaylistUris(rule.Tracks);
+    }
+
+    public EventRule GetRule()
+    {
+        var volume = int.TryParse(VolumeText, out var parsed)
+            ? parsed
+            : (int?)null;
+
+        return new EventRule(SelectedAction, GetPlaylistUris(), volume);
+    }
+
     private static EditableStringItem CreateItem(string value, ObservableCollection<EditableStringItem> collection)
     {
         return new EditableStringItem(value, item => collection.Remove(item));
     }
+
+    private EventAction _selectedAction;
+    private string _volumeText = string.Empty;
 }

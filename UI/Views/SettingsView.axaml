@@ -24,40 +24,22 @@
             </StackPanel>
 
             <StackPanel Spacing="6">
-                <TextBlock Text="Rules: Action Map" FontWeight="SemiBold" />
-                <TextBlock Text="{Binding AvailableActionKeysHint}" Opacity="0.7" />
+                <TextBlock Text="Event Rules" FontWeight="SemiBold" />
                 <ItemsControl ItemsSource="{Binding EventSettings}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:EventSettingsViewModel">
                             <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,6">
                                 <StackPanel Spacing="8">
                                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
-                                    <ItemsControl ItemsSource="{Binding ActionKeys}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="vm:EditableStringItem">
-                                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                                    <TextBox Width="260" Text="{Binding Value}" />
-                                                    <Button Content="Remove" Command="{Binding RemoveCommand}" />
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                    <Button Content="Add action" Command="{Binding AddActionKeyCommand}" Width="120" />
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </StackPanel>
-
-            <StackPanel Spacing="6">
-                <TextBlock Text="Spotify: Event Playlists" FontWeight="SemiBold" />
-                <ItemsControl ItemsSource="{Binding EventSettings}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:EventSettingsViewModel">
-                            <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,6">
-                                <StackPanel Spacing="8">
-                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="Action" VerticalAlignment="Center" />
+                                        <ComboBox Width="160"
+                                                  ItemsSource="{Binding AvailableActions}"
+                                                  SelectedItem="{Binding SelectedAction}" />
+                                        <TextBlock Text="Volume" VerticalAlignment="Center" />
+                                        <TextBox Width="80" Text="{Binding VolumeText}" />
+                                    </StackPanel>
+                                    <TextBlock Text="Tracks / Playlists" Opacity="0.7" />
                                     <ItemsControl ItemsSource="{Binding PlaylistUris}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:EditableStringItem">
@@ -68,31 +50,12 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <Button Content="Add playlist URI" Command="{Binding AddPlaylistUriCommand}" Width="160" />
+                                    <Button Content="Add track URI" Command="{Binding AddPlaylistUriCommand}" Width="140" />
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-            </StackPanel>
-
-            <StackPanel Spacing="6">
-                <TextBlock Text="Spotify: Default Playlists" FontWeight="SemiBold" />
-                <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="4" Padding="12">
-                    <StackPanel Spacing="8">
-                        <ItemsControl ItemsSource="{Binding DefaultPlaylistUris}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:EditableStringItem">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <TextBox Width="360" Text="{Binding Value}" />
-                                        <Button Content="Remove" Command="{Binding RemoveCommand}" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <Button Content="Add default playlist" Command="{Binding AddDefaultPlaylistCommand}" Width="180" />
-                    </StackPanel>
-                </Border>
             </StackPanel>
 
             <StackPanel Spacing="6">

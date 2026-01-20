@@ -50,6 +50,7 @@ public partial class App : Application
         services.AddSingleton(httpClient);
         services.AddSingleton<IAppStateService, PollingAppStateService>();
         services.AddSingleton<IConfigurationService, HttpConfigurationService>();
+        services.AddSingleton<IProfileService, HttpProfileService>();
         services.AddSingleton<ISpotifyAuthService, SpotifyAuthServiceClient>();
     }
 }

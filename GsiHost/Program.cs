@@ -18,11 +18,13 @@ builder.Services.AddSingleton<SnapshotDiffer>();
 builder.Services.AddSingleton<EventDetector>();
 builder.Services.AddSingleton<ISnapshotStore, InMemorySnapshotStore>();
 builder.Services.AddSingleton<IEventAction, LogEventAction>();
+builder.Services.AddSingleton<IEventAction, SpotifyProfileAction>();
 builder.Services.AddSingleton<IRulesEngine, RulesEngine>();
 builder.Services.AddSingleton<GsiProcessingService>();
 builder.Services.AddSingleton<AppStateService>();
 builder.Services.AddSingleton<IAppStateService>(sp => sp.GetRequiredService<AppStateService>());
 builder.Services.AddSingleton<IConfigurationService, AppSettingsConfigurationService>();
+builder.Services.AddSingleton<IProfileService, JsonProfileService>();
 builder.Services.AddSingleton<ISnapshotModuleMapper, VitalsModuleMapper>();
 builder.Services.AddSingleton<ISnapshotModuleMapper, PositionModuleMapper>();
 builder.Services.AddSingleton<ISnapshotModuleMapper, CombatModuleMapper>();
@@ -33,16 +35,17 @@ builder.Services.Configure<RulesEngineOptions>(
     builder.Configuration.GetSection("RulesEngine"));
 builder.Services.Configure<SpotifyClientOptions>(
     builder.Configuration.GetSection("Spotify"));
-builder.Services.Configure<SpotifyActionOptions>(
-    builder.Configuration.GetSection("SpotifyActions"));
 
 var app = builder.Build();
 
 app.MapGet("/", () => "UndefaultIt GSI Host");
 
-app.MapPost("/gsi", (GsiPayloadDto payload, GsiProcessingService processor) =>
+app.MapPost("/gsi", async (
+    GsiPayloadDto payload,
+    GsiProcessingService processor,
+    CancellationToken cancellationToken) =>
 {
-    var events = processor.Process(payload);
+    var events = await processor.ProcessAsync(payload, cancellationToken);
     return Results.Ok(new { events = events.Count });
 });
 
@@ -60,9 +63,21 @@ app.MapGet("/config", async (IConfigurationService configService, CancellationTo
     return Results.Ok(config);
 });
 
-app.MapPut("/config", async (AppConfig config, IConfigurationService configService, CancellationToken cancellationToken) =>
+app.MapPut("/config", async (SystemConfig config, IConfigurationService configService, CancellationToken cancellationToken) =>
 {
     await configService.SaveAsync(config, cancellationToken);
+    return Results.NoContent();
+});
+
+app.MapGet("/profiles", async (IProfileService profileService, CancellationToken cancellationToken) =>
+{
+    var profiles = await profileService.GetAsync(cancellationToken);
+    return Results.Ok(profiles);
+});
+
+app.MapPut("/profiles", async (MusicProfilesConfig profiles, IProfileService profileService, CancellationToken cancellationToken) =>
+{
+    await profileService.SaveAsync(profiles, cancellationToken);
     return Results.NoContent();
 });
 
@@ -100,9 +115,4 @@ void BuildSpotify(WebApplicationBuilder webApplicationBuilder)
     webApplicationBuilder.Services.AddSingleton<SpotifyOAuthService>();
     webApplicationBuilder.Services.AddSingleton<ISpotifyClient, SpotifyClient>();
 
-    // Spotify actions
-    webApplicationBuilder.Services.AddSingleton<IEventAction, SpotifyPauseAction>();
-    webApplicationBuilder.Services.AddSingleton<IEventAction, SpotifyPlayAction>();
-    webApplicationBuilder.Services.AddSingleton<IEventAction, SpotifyResumeAction>();
-    webApplicationBuilder.Services.AddSingleton<IEventAction, SpotifySetVolumeAction>();
 }

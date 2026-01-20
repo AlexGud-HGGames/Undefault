@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using Core.Actions;
 using Core.Diff;
 using Core.Models;
@@ -37,7 +39,9 @@ public sealed class RulesEngine : IRulesEngine
             );
     }
 
-    public IReadOnlyList<NormalizedEvent> Evaluate(GameSnapshot snapshot)
+    public async Task<IReadOnlyList<NormalizedEvent>> EvaluateAsync(
+        GameSnapshot snapshot,
+        CancellationToken cancellationToken = default)
     {
         if (snapshot is null)
         {
@@ -60,7 +64,7 @@ public sealed class RulesEngine : IRulesEngine
             {
                 if (_actionsByKey.TryGetValue(actionKey, out var action))
                 {
-                    action.Execute(normalizedEvent);
+                    await action.ExecuteAsync(normalizedEvent, cancellationToken).ConfigureAwait(false);
                 }
             }
         }

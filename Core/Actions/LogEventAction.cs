@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using Core.Models;
 using Microsoft.Extensions.Logging;
 
@@ -14,7 +16,7 @@ public sealed class LogEventAction : IEventAction
 
     public string Key => "log";
 
-    public void Execute(NormalizedEvent normalizedEvent)
+    public Task ExecuteAsync(NormalizedEvent normalizedEvent, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation(
             "Event {EventType} at {Timestamp} (GameId={GameId}, MatchId={MatchId}, PlayerId={PlayerId})",
@@ -24,5 +26,7 @@ public sealed class LogEventAction : IEventAction
             normalizedEvent.Context.MatchId,
             normalizedEvent.Context.PlayerId
         );
+
+        return Task.CompletedTask;
     }
 }

@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Core.Models;
 using Core.Rules;
 using GsiHost.Dtos;
@@ -25,10 +27,12 @@ public sealed class GsiProcessingService
 
     public event EventHandler<GsiProcessedEventArgs>? Processed;
 
-    public IReadOnlyList<NormalizedEvent> Process(GsiPayloadDto payload)
+    public async Task<IReadOnlyList<NormalizedEvent>> ProcessAsync(
+        GsiPayloadDto payload,
+        CancellationToken cancellationToken = default)
     {
         var snapshot = _mapper.Map(payload, DateTimeOffset.UtcNow);
-        var events = _rulesEngine.Evaluate(snapshot);
+        var events = await _rulesEngine.EvaluateAsync(snapshot, cancellationToken).ConfigureAwait(false);
 
         if (events.Count > 0)
         {

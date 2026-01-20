@@ -16,15 +16,15 @@ public sealed class HttpConfigurationService : IConfigurationService
         _httpClient = httpClient;
     }
 
-    public async Task<AppConfig> GetAsync(CancellationToken cancellationToken = default)
+    public async Task<SystemConfig> GetAsync(CancellationToken cancellationToken = default)
     {
-        var config = await _httpClient.GetFromJsonAsync<AppConfig>("config", cancellationToken)
+        var config = await _httpClient.GetFromJsonAsync<SystemConfig>("config", cancellationToken)
             .ConfigureAwait(false);
 
         return config ?? throw new InvalidOperationException("Configuration response was empty.");
     }
 
-    public async Task SaveAsync(AppConfig config, CancellationToken cancellationToken = default)
+    public async Task SaveAsync(SystemConfig config, CancellationToken cancellationToken = default)
     {
         var response = await _httpClient.PutAsJsonAsync("config", config, cancellationToken)
             .ConfigureAwait(false);

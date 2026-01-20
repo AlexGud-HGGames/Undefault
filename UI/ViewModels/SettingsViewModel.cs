@@ -18,13 +18,15 @@ namespace UI.ViewModels;
 public class SettingsViewModel : ViewModelBase
 {
     private readonly IConfigurationService _configurationService;
+    private readonly IProfileService _profileService;
     private readonly IAppStateService _appStateService;
     private readonly ISpotifyAuthService _spotifyAuthService;
     private readonly DelegateCommand _saveCommand;
     private readonly DelegateCommand _reloadCommand;
-    private AppConfig? _currentConfig;
-    private Dictionary<EventType, int> _eventVolumeMap = new();
-    private int? _defaultVolume;
+    private SystemConfig? _systemConfig;
+    private MusicProfilesConfig? _profilesConfig;
+    private string _activeProfileId = "default";
+    private string _activeProfileName = "Default";
     private string _gsiEndpoint = string.Empty;
     private string _spotifyAuthStatus = "Disconnected";
     private string _spotifyPlaybackState = "N/A";
@@ -35,21 +37,20 @@ public class SettingsViewModel : ViewModelBase
 
     public SettingsViewModel(
         IConfigurationService configurationService,
+        IProfileService profileService,
         IAppStateService appStateService,
         ISpotifyAuthService spotifyAuthService)
     {
         _configurationService = configurationService;
+        _profileService = profileService;
         _appStateService = appStateService;
         _spotifyAuthService = spotifyAuthService;
 
         EventSettings = new ObservableCollection<EventSettingsViewModel>(
             Enum.GetValues<EventType>().Select(type => new EventSettingsViewModel(type)));
 
-        DefaultPlaylistUris = new ObservableCollection<EditableStringItem>();
-
         _saveCommand = new DelegateCommand(() => _ = SaveAsync(), () => !IsSaving);
         _reloadCommand = new DelegateCommand(() => _ = LoadAsync(), () => !IsLoading);
-        AddDefaultPlaylistCommand = new DelegateCommand(() => DefaultPlaylistUris.Add(CreateItem(string.Empty, DefaultPlaylistUris)));
         CopyEndpointCommand = new DelegateCommand(() => _ = CopyEndpointAsync());
         OpenEndpointCommand = new DelegateCommand(OpenEndpoint);
         ConnectSpotifyCommand = new DelegateCommand(() => _ = ConnectSpotifyAsync());
@@ -59,8 +60,6 @@ public class SettingsViewModel : ViewModelBase
     }
 
     public ObservableCollection<EventSettingsViewModel> EventSettings { get; }
-
-    public ObservableCollection<EditableStringItem> DefaultPlaylistUris { get; }
 
     public string GsiEndpoint
     {
@@ -116,14 +115,9 @@ public class SettingsViewModel : ViewModelBase
         }
     }
 
-    public string AvailableActionKeysHint =>
-        "Actions: log, spotify.pause, spotify.play, spotify.resume, spotify.volume.*";
-
     public ICommand SaveCommand => _saveCommand;
 
     public ICommand ReloadCommand => _reloadCommand;
-
-    public ICommand AddDefaultPlaylistCommand { get; }
 
     public ICommand CopyEndpointCommand { get; }
 
@@ -139,33 +133,29 @@ public class SettingsViewModel : ViewModelBase
 
         try
         {
-            var config = await _configurationService.GetAsync().ConfigureAwait(false);
-            _currentConfig = config;
-            _eventVolumeMap = config.SpotifyActions.EventVolumeMap;
-            _defaultVolume = config.SpotifyActions.DefaultVolume;
+            var systemConfig = await _configurationService.GetAsync().ConfigureAwait(false);
+            var profilesConfig = await _profileService.GetAsync().ConfigureAwait(false);
+            _systemConfig = systemConfig;
+            _profilesConfig = profilesConfig;
 
             Dispatcher.UIThread.Post(() =>
             {
-                GsiEndpoint = BuildEndpointDisplay(config.GsiEndpoint);
+                GsiEndpoint = BuildEndpointDisplay(systemConfig.Gsi);
+
+                var profile = ResolveActiveProfile(profilesConfig);
+                _activeProfileId = profile.Id;
+                _activeProfileName = profile.Name;
 
                 foreach (var eventSettings in EventSettings)
                 {
-                    var actionKeys = config.RulesEngine.ActionMap.TryGetValue(eventSettings.EventType, out var list)
-                        ? list
-                        : new List<string>();
-
-                    var playlistUris = config.SpotifyActions.EventPlaylistMap.TryGetValue(eventSettings.EventType, out var uris)
-                        ? uris
-                        : new List<string>();
-
-                    eventSettings.SetActionKeys(actionKeys);
-                    eventSettings.SetPlaylistUris(playlistUris);
-                }
-
-                DefaultPlaylistUris.Clear();
-                foreach (var uri in config.SpotifyActions.DefaultPlaylistUris)
-                {
-                    DefaultPlaylistUris.Add(CreateItem(uri, DefaultPlaylistUris));
+                    if (profile.Rules.TryGetValue(eventSettings.EventType, out var rule))
+                    {
+                        eventSettings.SetRule(rule);
+                    }
+                    else
+                    {
+                        eventSettings.SetRule(new EventRule(EventAction.None, new List<string>(), null));
+                    }
                 }
 
                 StatusMessage = "Configuration loaded.";
@@ -187,7 +177,7 @@ public class SettingsViewModel : ViewModelBase
 
     private async Task SaveAsync()
     {
-        if (_currentConfig is null)
+        if (_systemConfig is null || _profilesConfig is null)
         {
             return;
         }
@@ -198,34 +188,20 @@ public class SettingsViewModel : ViewModelBase
 
         try
         {
-            var actionMap = EventSettings.ToDictionary(
+            var rules = EventSettings.ToDictionary(
                 item => item.EventType,
-                item => item.GetActionKeys());
+                item => item.GetRule());
 
-            var playlistMap = EventSettings.ToDictionary(
-                item => item.EventType,
-                item => item.GetPlaylistUris());
+            var profile = new MusicProfile(
+                _activeProfileId,
+                _activeProfileName,
+                rules);
 
-            var defaultPlaylists = DefaultPlaylistUris
-                .Select(item => item.Value.Trim())
-                .Where(item => !string.IsNullOrWhiteSpace(item))
-                .ToList();
+            var profiles = new MusicProfilesConfig(
+                _activeProfileId,
+                new List<MusicProfile> { profile });
 
-            var spotifyActions = new SpotifyActionsConfig(
-                playlistMap,
-                _eventVolumeMap,
-                defaultPlaylists,
-                _defaultVolume
-            );
-
-            var updatedConfig = new AppConfig(
-                new RulesEngineConfig(actionMap),
-                _currentConfig.Spotify,
-                spotifyActions,
-                _currentConfig.GsiEndpoint
-            );
-
-            await _configurationService.SaveAsync(updatedConfig).ConfigureAwait(false);
+            await _profileService.SaveAsync(profiles).ConfigureAwait(false);
 
             Dispatcher.UIThread.Post(() => StatusMessage = "Configuration saved.");
         }
@@ -300,12 +276,22 @@ public class SettingsViewModel : ViewModelBase
         });
     }
 
-    private static EditableStringItem CreateItem(string value, ObservableCollection<EditableStringItem> collection)
+    private static MusicProfile ResolveActiveProfile(MusicProfilesConfig config)
     {
-        return new EditableStringItem(value, item => collection.Remove(item));
+        if (!string.IsNullOrWhiteSpace(config.ActiveProfileId))
+        {
+            var match = config.Profiles.FirstOrDefault(profile => profile.Id == config.ActiveProfileId);
+            if (match is not null)
+            {
+                return match;
+            }
+        }
+
+        return config.Profiles.FirstOrDefault()
+               ?? new MusicProfile("default", "Default", new Dictionary<EventType, EventRule>());
     }
 
-    private static string BuildEndpointDisplay(GsiEndpointInfo endpointInfo)
+    private static string BuildEndpointDisplay(GsiConfig endpointInfo)
     {
         var baseUrl = endpointInfo.Url ?? string.Empty;
         var normalizedBase = baseUrl.TrimEnd('/');

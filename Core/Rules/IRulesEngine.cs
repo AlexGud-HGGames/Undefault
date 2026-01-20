@@ -1,9 +1,13 @@
+using System.Threading;
+using System.Threading.Tasks;
 using Core.Models;
 
 namespace Core.Rules;
 
 public interface IRulesEngine
 {
-    IReadOnlyList<NormalizedEvent> Evaluate(GameSnapshot snapshot);
+    Task<IReadOnlyList<NormalizedEvent>> EvaluateAsync(
+        GameSnapshot snapshot,
+        CancellationToken cancellationToken = default);
     void Reset();
 }
