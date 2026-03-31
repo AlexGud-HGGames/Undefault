@@ -1,0 +1,20 @@
+{
+  "ActiveProfileId": "console-default",
+  "Profiles": [
+    {
+      "Id": "console-default",
+      "Name": "Console Default",
+      "Rules": [
+        {
+          "EventKey": "round_start",
+          "Command": "duck",
+          "VolumePercent": 0
+        },
+        {
+          "EventKey": "death",
+          "Command": "restore_volume"
+        }
+      ]
+    }
+  ]
+}
