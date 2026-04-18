@@ -42,16 +42,7 @@ public sealed class JsonProfileService : IProfileService
                 content,
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-            if (config is null || config.Profiles is null || config.Profiles.Count == 0)
-            {
-                return BuildDefaultConfig();
-            }
-
-            var activeId = string.IsNullOrWhiteSpace(config.ActiveProfileId)
-                ? config.Profiles[0].Id
-                : config.ActiveProfileId;
-
-            return config with { ActiveProfileId = activeId };
+            return NormalizeAndValidate(config);
         }
         catch (Exception ex)
         {
@@ -71,13 +62,13 @@ public sealed class JsonProfileService : IProfileService
             throw new ArgumentNullException(nameof(config));
         }
 
-        Validate(config);
+        var normalized = NormalizeAndValidate(config);
 
         await _mutex.WaitAsync(cancellationToken);
         try
         {
             var json = JsonSerializer.Serialize(
-                config,
+                normalized,
                 new JsonSerializerOptions { WriteIndented = true });
 
             await File.WriteAllTextAsync(_filePath, json, cancellationToken);
@@ -94,19 +85,103 @@ public sealed class JsonProfileService : IProfileService
             "default",
             new List<MusicProfile>
             {
-                new("default", "Default", new Dictionary<EventType, EventRule>())
+                new("default", "Default", new List<EventTrackRule>())
             });
+    }
+
+    private static MusicProfilesConfig NormalizeAndValidate(MusicProfilesConfig? config)
+    {
+        if (config is null || config.Profiles is null || config.Profiles.Count == 0)
+        {
+            return BuildDefaultConfig();
+        }
+
+        var profiles = config.Profiles
+            .Select(NormalizeProfile)
+            .ToList();
+
+        var activeProfileId = string.IsNullOrWhiteSpace(config.ActiveProfileId)
+            ? profiles[0].Id
+            : config.ActiveProfileId.Trim();
+
+        if (!profiles.Any(profile => string.Equals(profile.Id, activeProfileId, StringComparison.OrdinalIgnoreCase)))
+        {
+            activeProfileId = profiles[0].Id;
+        }
+
+        var normalized = new MusicProfilesConfig(activeProfileId, profiles);
+        Validate(normalized);
+        return normalized;
+    }
+
+    private static MusicProfile NormalizeProfile(MusicProfile profile)
+    {
+        var id = string.IsNullOrWhiteSpace(profile.Id)
+            ? Guid.NewGuid().ToString("N")
+            : profile.Id.Trim();
+        var name = string.IsNullOrWhiteSpace(profile.Name)
+            ? "Untitled Profile"
+            : profile.Name.Trim();
+        var rules = (profile.Rules ?? new List<EventTrackRule>())
+            .Select(NormalizeRule)
+            .ToList();
+
+        return new MusicProfile(id, name, rules);
+    }
+
+    private static EventTrackRule NormalizeRule(EventTrackRule rule)
+    {
+        var eventKey = EventKeys.Normalize(rule.EventKey);
+        var tracks = (rule.Tracks ?? new List<string>())
+            .Select(track => track?.Trim() ?? string.Empty)
+            .Where(track => !string.IsNullOrWhiteSpace(track))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new EventTrackRule(eventKey, tracks);
     }
 
     private static void Validate(MusicProfilesConfig config)
     {
+        var seenProfileIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var profile in config.Profiles)
         {
-            foreach (var rule in profile.Rules.Values)
+            if (string.IsNullOrWhiteSpace(profile.Id))
             {
-                if (rule.Volume is < 0 or > 100)
+                throw new ArgumentException("Profile id is required.", nameof(config));
+            }
+
+            if (!seenProfileIds.Add(profile.Id))
+            {
+                throw new ArgumentException($"Duplicate profile id '{profile.Id}'.", nameof(config));
+            }
+
+            if (string.IsNullOrWhiteSpace(profile.Name))
+            {
+                throw new ArgumentException($"Profile '{profile.Id}' must have a name.", nameof(config));
+            }
+
+            var seenEventKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var rule in profile.Rules)
+            {
+                if (string.IsNullOrWhiteSpace(rule.EventKey))
                 {
-                    throw new ArgumentOutOfRangeException(nameof(config), "Volume must be between 0 and 100");
+                    throw new ArgumentException($"Profile '{profile.Name}' contains a rule with an empty event key.", nameof(config));
+                }
+
+                if (!seenEventKeys.Add(rule.EventKey))
+                {
+                    throw new ArgumentException(
+                        $"Profile '{profile.Name}' contains duplicate event key '{rule.EventKey}'.",
+                        nameof(config));
+                }
+
+                if (rule.Tracks.Count == 0)
+                {
+                    throw new ArgumentException(
+                        $"Profile '{profile.Name}' event '{rule.EventKey}' must include at least one track URI.",
+                        nameof(config));
                 }
             }
         }

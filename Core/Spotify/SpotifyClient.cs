@@ -57,16 +57,20 @@ public sealed class SpotifyClient : ISpotifyClient
         return MapToPlaybackState(playbackResponse);
     }
 
-    public async Task PlayAsync(string? uri = null, CancellationToken cancellationToken = default)
+    public async Task PlayAsync(string? uri = null, int? positionMs = null, CancellationToken cancellationToken = default)
     {
         await EnsureAuthenticatedAsync(cancellationToken);
 
         var request = new HttpRequestMessage(HttpMethod.Put, "https://api.spotify.com/v1/me/player/play");
         await AddAuthorizationHeaderAsync(request, cancellationToken);
 
-        if (!string.IsNullOrEmpty(uri))
+        if (!string.IsNullOrEmpty(uri) || positionMs.HasValue)
         {
-            var body = JsonSerializer.Serialize(new { uris = new[] { uri } });
+            var body = JsonSerializer.Serialize(new
+            {
+                uris = string.IsNullOrWhiteSpace(uri) ? null : new[] { uri },
+                position_ms = positionMs
+            });
             request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
         }
 

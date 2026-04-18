@@ -83,6 +83,11 @@ public class ProfileRoutingTests
     {
         var spotifyClient = new FakeSpotifyClient();
         var playbackPolicy = new FakePlaybackPolicy();
+        var smartTrackStartService = new FakeSmartTrackStartService();
+        var trackPlaybackService = new TrackPlaybackService(
+            spotifyClient,
+            smartTrackStartService,
+            NullLogger<TrackPlaybackService>.Instance);
         var profileService = new FakeProfileService(new MusicProfilesConfig(
             "default",
             new List<MusicProfile>
@@ -96,15 +101,92 @@ public class ProfileRoutingTests
             spotifyClient,
             profileService,
             playbackPolicy,
+            trackPlaybackService,
             NullLogger<SpotifyProfileAction>.Instance);
 
         await action.ExecuteAsync(NormalizedEvent.Death(BuildSnapshot(DateTimeOffset.UtcNow, 0, isAlive: false)));
 
         spotifyClient.PlayedUris.Should().ContainSingle().Which.Should().Be("spotify:track:death-song");
+        spotifyClient.PlayedPositions.Should().ContainSingle().Which.Should().BeNull();
         playbackPolicy.BeforePlayCalls.Should().ContainSingle().Which.EventKey.Should().Be(EventKeys.Death);
         spotifyClient.PauseCalls.Should().Be(0);
         spotifyClient.ResumeCalls.Should().Be(0);
         spotifyClient.VolumeCalls.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task TrackPlaybackService_UsesSmartTrackStartWhenMetadataExists()
+    {
+        var spotifyClient = new FakeSpotifyClient();
+        var smartTrackStartService = new FakeSmartTrackStartService
+        {
+            StartPositionsByUri =
+            {
+                ["spotify:track:anthem"] = 42_500
+            }
+        };
+        var service = new TrackPlaybackService(
+            spotifyClient,
+            smartTrackStartService,
+            NullLogger<TrackPlaybackService>.Instance);
+
+        await service.PlayTrackAsync("spotify:track:anthem");
+
+        spotifyClient.PlayedUris.Should().ContainSingle().Which.Should().Be("spotify:track:anthem");
+        spotifyClient.PlayedPositions.Should().ContainSingle().Which.Should().Be(42_500);
+    }
+
+    [Fact]
+    public async Task TrackPlaybackService_FallsBackToTrackStartWhenNoMetadataExists()
+    {
+        var spotifyClient = new FakeSpotifyClient();
+        var service = new TrackPlaybackService(
+            spotifyClient,
+            new FakeSmartTrackStartService(),
+            NullLogger<TrackPlaybackService>.Instance);
+
+        await service.PlayTrackAsync("spotify:track:anthem");
+
+        spotifyClient.PlayedUris.Should().ContainSingle().Which.Should().Be("spotify:track:anthem");
+        spotifyClient.PlayedPositions.Should().ContainSingle().Which.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SpotifyProfileAction_PreservesChosenUri_WhenSmartTrackStartIsApplied()
+    {
+        var spotifyClient = new FakeSpotifyClient();
+        var playbackPolicy = new FakePlaybackPolicy();
+        var smartTrackStartService = new FakeSmartTrackStartService
+        {
+            StartPositionsByUri =
+            {
+                ["spotify:track:death-song"] = 61_000
+            }
+        };
+        var trackPlaybackService = new TrackPlaybackService(
+            spotifyClient,
+            smartTrackStartService,
+            NullLogger<TrackPlaybackService>.Instance);
+        var profileService = new FakeProfileService(new MusicProfilesConfig(
+            "default",
+            new List<MusicProfile>
+            {
+                new("default", "Default", new List<EventTrackRule>
+                {
+                    new(EventKeys.Death, new List<string> { "spotify:track:death-song" })
+                })
+            }));
+        var action = new SpotifyProfileAction(
+            spotifyClient,
+            profileService,
+            playbackPolicy,
+            trackPlaybackService,
+            NullLogger<SpotifyProfileAction>.Instance);
+
+        await action.ExecuteAsync(NormalizedEvent.Death(BuildSnapshot(DateTimeOffset.UtcNow, 0, isAlive: false)));
+
+        spotifyClient.PlayedUris.Should().ContainSingle().Which.Should().Be("spotify:track:death-song");
+        spotifyClient.PlayedPositions.Should().ContainSingle().Which.Should().Be(61_000);
     }
 
     [Fact]
@@ -129,14 +211,17 @@ public class ProfileRoutingTests
                     new(EventKeys.Death, MusicControlCommands.RestoreVolume)
                 })
             }));
-        var action = new SpotifyControlProfileAction(
+        var playback = new SpotifyPlaybackControlCoordinator(
             spotifyClient,
-            controlProfileService,
             Options.Create(new SpotifyVolumeDuckOptions
             {
                 MuteVolume = 0,
                 FallbackRestoreVolume = 50
             }),
+            NullLogger<SpotifyPlaybackControlCoordinator>.Instance);
+        var action = new SpotifyControlProfileAction(
+            playback,
+            controlProfileService,
             NullLogger<SpotifyControlProfileAction>.Instance);
 
         await action.ExecuteAsync(NormalizedEvent.RoundStart(BuildSnapshot(DateTimeOffset.UtcNow, 100, isAlive: true)));
@@ -167,10 +252,13 @@ public class ProfileRoutingTests
                     new(EventKeys.Death, MusicControlCommands.Resume)
                 })
             }));
-        var action = new SpotifyControlProfileAction(
+        var playback = new SpotifyPlaybackControlCoordinator(
             spotifyClient,
-            controlProfileService,
             Options.Create(new SpotifyVolumeDuckOptions()),
+            NullLogger<SpotifyPlaybackControlCoordinator>.Instance);
+        var action = new SpotifyControlProfileAction(
+            playback,
+            controlProfileService,
             NullLogger<SpotifyControlProfileAction>.Instance);
 
         await action.ExecuteAsync(NormalizedEvent.RoundStart(BuildSnapshot(DateTimeOffset.UtcNow, 100, isAlive: true)));
@@ -304,10 +392,31 @@ public class ProfileRoutingTests
         }
     }
 
+    private sealed class FakeSmartTrackStartService : ISmartTrackStartService
+    {
+        public Dictionary<string, int?> StartPositionsByUri { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public string FilePath => "smart-track-starts.json";
+
+        public Task WarmAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task<int?> ResolveStartPositionMsAsync(string trackUri, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                StartPositionsByUri.TryGetValue(trackUri, out var positionMs)
+                    ? positionMs
+                    : null);
+        }
+    }
+
     private sealed class FakeSpotifyClient : ISpotifyClient
     {
         public PlaybackState? CurrentPlayback { get; set; }
         public List<string?> PlayedUris { get; } = new();
+        public List<int?> PlayedPositions { get; } = new();
         public int PauseCalls { get; private set; }
         public int ResumeCalls { get; private set; }
         public List<int> VolumeCalls { get; } = new();
@@ -317,9 +426,10 @@ public class ProfileRoutingTests
             return Task.FromResult(CurrentPlayback);
         }
 
-        public Task PlayAsync(string? uri = null, CancellationToken cancellationToken = default)
+        public Task PlayAsync(string? uri = null, int? positionMs = null, CancellationToken cancellationToken = default)
         {
             PlayedUris.Add(uri);
+            PlayedPositions.Add(positionMs);
             return Task.CompletedTask;
         }
 

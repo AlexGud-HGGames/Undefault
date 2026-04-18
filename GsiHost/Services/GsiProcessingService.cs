@@ -14,6 +14,7 @@ public sealed class GsiProcessingService
     private readonly GsiSnapshotMapper _mapper;
     private readonly IRulesEngine _rulesEngine;
     private readonly ILogger<GsiProcessingService> _logger;
+    private int _hasLoggedConnection;
 
     public GsiProcessingService(
         GsiSnapshotMapper mapper,
@@ -31,13 +32,13 @@ public sealed class GsiProcessingService
         GsiPayloadDto payload,
         CancellationToken cancellationToken = default)
     {
+        if (Interlocked.Exchange(ref _hasLoggedConnection, 1) == 0)
+        {
+            _logger.LogInformation("CS2 GSI connected.");
+        }
+
         var snapshot = _mapper.Map(payload, DateTimeOffset.UtcNow);
         var events = await _rulesEngine.EvaluateAsync(snapshot, cancellationToken).ConfigureAwait(false);
-
-        if (events.Count > 0)
-        {
-            _logger.LogInformation("Detected {EventCount} events", events.Count);
-        }
 
         Processed?.Invoke(this, new GsiProcessedEventArgs(snapshot, events));
         return events;

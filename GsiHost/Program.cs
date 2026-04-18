@@ -25,6 +25,8 @@ builder.Services.AddSingleton<IEventAction, SpotifyProfileAction>();
 builder.Services.AddSingleton<IEventAction, SpotifyControlProfileAction>();
 builder.Services.AddSingleton<IEventAction, SpotifyVolumeDuckAction>();
 builder.Services.AddSingleton<IPlaybackPolicy, NoOpPlaybackPolicy>();
+builder.Services.AddSingleton<ISmartTrackStartService, JsonSmartTrackStartService>();
+builder.Services.AddSingleton<ITrackPlaybackService, TrackPlaybackService>();
 builder.Services.AddSingleton<IRulesEngine, RulesEngine>();
 builder.Services.AddSingleton<GsiProcessingService>();
 builder.Services.AddSingleton<AppStateService>();
@@ -40,6 +42,8 @@ builder.Services.AddSingleton<ISnapshotModuleMapper, RoundModuleMapper>();
 
 BuildSpotify(builder);
 
+builder.Services.AddSingleton<ISpotifyPlaybackControl, SpotifyPlaybackControlCoordinator>();
+
 builder.Services.Configure<RulesEngineOptions>(
     builder.Configuration.GetSection("RulesEngine"));
 builder.Services.Configure<EventDetectorOptions>(
@@ -48,11 +52,24 @@ builder.Services.Configure<SpotifyClientOptions>(
     builder.Configuration.GetSection("Spotify"));
 builder.Services.Configure<SpotifyVolumeDuckOptions>(
     builder.Configuration.GetSection("SpotifyVolumeDuck"));
+builder.Services.Configure<SmartTrackStartOptions>(
+    builder.Configuration.GetSection("SmartTrackStart"));
 
 var app = builder.Build();
 
-await EnsureCs2SetupAsync(app);
-var authorizationUrl = LogSpotifyAuthorizationUrl(app);
+if (!consoleLaunchSettings.SkipCs2Setup)
+{
+    await EnsureCs2SetupAsync(app);
+}
+
+if (!consoleLaunchSettings.SkipSmartTrackWarmup)
+{
+    await WarmSmartTrackStartAsync(app);
+}
+
+var authorizationUrl = consoleLaunchSettings.HasSpotifyCredentials
+    ? LogSpotifyAuthorizationUrl(app)
+    : null;
 await WriteConsoleStartupChecklistAsync(app, consoleLaunchSettings, authorizationUrl);
 
 app.MapGet("/", () => "UndefaultIt GSI Host");
@@ -257,6 +274,19 @@ static string? LogSpotifyAuthorizationUrl(WebApplication app)
     return authorizationUrl;
 }
 
+static async Task WarmSmartTrackStartAsync(WebApplication app)
+{
+    try
+    {
+        var smartTrackStartService = app.Services.GetRequiredService<ISmartTrackStartService>();
+        await smartTrackStartService.WarmAsync();
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Failed to warm Smart Track Start metadata");
+    }
+}
+
 static async Task WriteConsoleStartupChecklistAsync(
     WebApplication app,
     ConsoleLaunchSettings consoleLaunchSettings,
@@ -264,12 +294,47 @@ static async Task WriteConsoleStartupChecklistAsync(
 {
     var setupService = app.Services.GetRequiredService<ICs2SetupService>();
     var controlProfileService = app.Services.GetRequiredService<IControlProfileService>();
+    var smartTrackStartService = app.Services.GetRequiredService<ISmartTrackStartService>();
     var spotifyClient = app.Services.GetRequiredService<ISpotifyClient>();
-    var cs2Status = await setupService.GetStatusAsync();
-    var controlProfiles = await controlProfileService.GetAsync();
-    var activeControlProfile = controlProfiles.Profiles.FirstOrDefault(profile =>
-        string.Equals(profile.Id, controlProfiles.ActiveProfileId, StringComparison.OrdinalIgnoreCase))
-        ?? controlProfiles.Profiles.FirstOrDefault();
+
+    Cs2SetupStatus? cs2Status = null;
+    if (!consoleLaunchSettings.SkipCs2Setup)
+    {
+        try
+        {
+            cs2Status = await setupService.GetStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "Failed to read CS2 GSI setup status");
+        }
+    }
+
+    ConsoleControlProfilesConfig? controlProfiles = null;
+    try
+    {
+        controlProfiles = await controlProfileService.GetAsync();
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Failed to read console control profiles");
+    }
+
+    var activeControlProfile = controlProfiles is null
+        ? null
+        : controlProfiles.Profiles.FirstOrDefault(profile =>
+            string.Equals(profile.Id, controlProfiles.ActiveProfileId, StringComparison.OrdinalIgnoreCase))
+            ?? controlProfiles.Profiles.FirstOrDefault();
+
+    SmartTrackStartOptions smartTrackStartOptions;
+    try
+    {
+        smartTrackStartOptions = app.Services.GetRequiredService<IOptions<SmartTrackStartOptions>>().Value;
+    }
+    catch
+    {
+        smartTrackStartOptions = new SmartTrackStartOptions();
+    }
 
     var spotifyAuthenticated = false;
     try
@@ -283,6 +348,8 @@ static async Task WriteConsoleStartupChecklistAsync(
 
     Console.WriteLine();
     Console.WriteLine("UndefaultIt console startup");
+    Console.WriteLine($"- Quick launch mode: {(consoleLaunchSettings.IsQuickLaunch ? "yes" : "no")}");
+    Console.WriteLine($"- Spotify mode: {(consoleLaunchSettings.ConfigurationOverrides.TryGetValue("UseMockSpotify", out var useMock) && string.Equals(useMock, "true", StringComparison.OrdinalIgnoreCase) ? "mock" : "real")}");
     Console.WriteLine($"- Spotify credentials: {(consoleLaunchSettings.HasSpotifyCredentials ? "ready" : "missing")}");
     Console.WriteLine($"- Prompted for credentials this run: {(consoleLaunchSettings.PromptedForCredentials ? "yes" : "no")}");
     Console.WriteLine($"- Encrypted Spotify secret store: {consoleLaunchSettings.EncryptedStorePath}");
@@ -291,14 +358,19 @@ static async Task WriteConsoleStartupChecklistAsync(
     Console.WriteLine($"- Cleared encrypted store this run: {(consoleLaunchSettings.ClearedEncryptedStore ? "yes" : "no")}");
     Console.WriteLine($"- Spotify redirect URI to register: {consoleLaunchSettings.RedirectUri}");
     Console.WriteLine($"- Spotify authorization URL: {authorizationUrl ?? "unavailable until credentials are provided"}");
-    Console.WriteLine($"- CS2 GSI target URL: {cs2Status.GsiUri ?? $"{consoleLaunchSettings.GsiBaseUrl}/gsi"}");
-    Console.WriteLine($"- CS2 cfg ready: {(cs2Status.IsReady ? "yes" : "no")}{FormatSuffix(cs2Status.CfgPath)}");
+    Console.WriteLine($"- CS2 setup: {(consoleLaunchSettings.SkipCs2Setup ? "skipped" : "attempted")}");
+    Console.WriteLine($"- CS2 GSI target URL: {cs2Status?.GsiUri ?? $"{consoleLaunchSettings.GsiBaseUrl}/gsi"}");
+    Console.WriteLine($"- CS2 cfg ready: {(consoleLaunchSettings.SkipCs2Setup ? "skipped" : (cs2Status?.IsReady == true ? "yes" : "no"))}{(consoleLaunchSettings.SkipCs2Setup ? string.Empty : FormatSuffix(cs2Status?.CfgPath))}");
     Console.WriteLine($"- Control profile file: {controlProfileService.FilePath}");
     Console.WriteLine($"- Active control profile: {activeControlProfile?.Name ?? "none"}{FormatSuffix(activeControlProfile?.Id)}");
+    Console.WriteLine($"- Smart Track Start warmup: {(consoleLaunchSettings.SkipSmartTrackWarmup ? "skipped" : "attempted")}");
+    Console.WriteLine($"- Smart Track Start: {(smartTrackStartOptions.Enabled ? "enabled" : "disabled")}");
+    Console.WriteLine($"- Smart Track Start file: {smartTrackStartService.FilePath}");
     Console.WriteLine($"- Spotify authenticated: {(spotifyAuthenticated ? "yes" : "no")}");
     Console.WriteLine("- Spotify playback control requires Premium and an active playback device.");
     Console.WriteLine("- Use --reset-spotify-secrets to overwrite the saved secrets without printing them.");
     Console.WriteLine("- Edit control-profiles.json for pause/resume/duck behavior.");
+    Console.WriteLine("- Edit smart-track-starts.json to configure optional non-zero track starts for spotify.profile playback.");
     Console.WriteLine("- Open /spotify/status, /setup/cs2/status, or /control-profiles for diagnostics.");
     Console.WriteLine();
 }

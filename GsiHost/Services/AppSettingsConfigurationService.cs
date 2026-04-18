@@ -35,9 +35,7 @@ public sealed class AppSettingsConfigurationService : IConfigurationService
             var root = await ReadRootAsync(cancellationToken);
             var spotify = ParseSpotify(root);
             var useMockSpotify = root["UseMockSpotify"]?.GetValue<bool>() ?? false;
-
-            var url = _configuration["Urls"] ?? _configuration["ASPNETCORE_URLS"];
-            var gsi = new GsiConfig("POST", "/gsi", url);
+            var gsi = ParseGsi(root, _configuration);
 
             return new SystemConfig(spotify, gsi, useMockSpotify);
         }
@@ -71,6 +69,7 @@ public sealed class AppSettingsConfigurationService : IConfigurationService
             }
 
             root["Spotify"] = spotifyNode;
+            root["Gsi"] = BuildGsiNode(config.Gsi);
 
             var json = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(_filePath, json, cancellationToken);
@@ -110,6 +109,33 @@ public sealed class AppSettingsConfigurationService : IConfigurationService
         return new SpotifySystemConfig(clientId, redirectUri, scopes, clientSecret);
     }
 
+    private static GsiConfig ParseGsi(JsonObject root, IConfiguration configuration)
+    {
+        var gsiNode = root["Gsi"] as JsonObject;
+        var method = gsiNode?["Method"]?.GetValue<string>() ?? "POST";
+        var path = gsiNode?["Path"]?.GetValue<string>() ?? "/gsi";
+        var configuredUrl = gsiNode?["Url"]?.GetValue<string>();
+        var fallbackUrls = configuration["Urls"] ?? configuration["ASPNETCORE_URLS"];
+        var url = !string.IsNullOrWhiteSpace(configuredUrl)
+            ? configuredUrl
+            : SelectPreferredUrl(fallbackUrls);
+
+        return new GsiConfig(
+            string.IsNullOrWhiteSpace(method) ? "POST" : method.Trim().ToUpperInvariant(),
+            NormalizePath(path),
+            NormalizeBaseUrl(url));
+    }
+
+    private static JsonObject BuildGsiNode(GsiConfig gsi)
+    {
+        return new JsonObject
+        {
+            ["Method"] = string.IsNullOrWhiteSpace(gsi.Method) ? "POST" : gsi.Method.Trim().ToUpperInvariant(),
+            ["Path"] = NormalizePath(gsi.Path),
+            ["Url"] = NormalizeBaseUrl(gsi.Url)
+        };
+    }
+
     private static JsonArray BuildStringArrayNode(IEnumerable<string> values)
     {
         var array = new JsonArray();
@@ -119,5 +145,31 @@ public sealed class AppSettingsConfigurationService : IConfigurationService
         }
 
         return array;
+    }
+
+    private static string NormalizePath(string? path)
+    {
+        var value = string.IsNullOrWhiteSpace(path) ? "/gsi" : path.Trim();
+        return value.StartsWith('/') ? value : "/" + value;
+    }
+
+    private static string? NormalizeBaseUrl(string? url)
+    {
+        return string.IsNullOrWhiteSpace(url)
+            ? null
+            : url.Trim().TrimEnd('/');
+    }
+
+    private static string? SelectPreferredUrl(string? urls)
+    {
+        if (string.IsNullOrWhiteSpace(urls))
+        {
+            return null;
+        }
+
+        return urls
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(NormalizeBaseUrl)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
     }
 }

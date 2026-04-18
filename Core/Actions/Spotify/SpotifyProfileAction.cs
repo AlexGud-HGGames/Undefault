@@ -14,15 +14,21 @@ public sealed class SpotifyProfileAction : IEventAction
 {
     private readonly ISpotifyClient _spotifyClient;
     private readonly IProfileService _profileService;
+    private readonly IPlaybackPolicy _playbackPolicy;
+    private readonly ITrackPlaybackService _trackPlaybackService;
     private readonly ILogger<SpotifyProfileAction> _logger;
 
     public SpotifyProfileAction(
         ISpotifyClient spotifyClient,
         IProfileService profileService,
+        IPlaybackPolicy playbackPolicy,
+        ITrackPlaybackService trackPlaybackService,
         ILogger<SpotifyProfileAction> logger)
     {
         _spotifyClient = spotifyClient;
         _profileService = profileService;
+        _playbackPolicy = playbackPolicy;
+        _trackPlaybackService = trackPlaybackService;
         _logger = logger;
     }
 
@@ -39,41 +45,30 @@ public sealed class SpotifyProfileAction : IEventAction
                 return;
             }
 
-            var rule = await ResolveRuleAsync(normalizedEvent.Type, cancellationToken);
-            if (rule is null || rule.Action == EventAction.None)
+            var rule = await ResolveRuleAsync(normalizedEvent.EventKey, cancellationToken);
+            if (rule is null)
             {
                 return;
             }
 
-            if (rule.Volume.HasValue)
+            var uri = ChooseUri(rule.Tracks);
+            if (string.IsNullOrWhiteSpace(uri))
             {
-                await _spotifyClient.SetVolumeAsync(rule.Volume.Value, cancellationToken);
+                _logger.LogDebug("No Spotify URIs configured for event {EventKey}", normalizedEvent.EventKey);
+                return;
             }
 
-            switch (rule.Action)
-            {
-                case EventAction.Play:
-                    var uri = ChooseUri(rule.Tracks);
-                    await _spotifyClient.PlayAsync(uri, cancellationToken);
-                    _logger.LogInformation("Spotify play (profile) for event {EventType}", normalizedEvent.Type);
-                    break;
-                case EventAction.Pause:
-                    await _spotifyClient.PauseAsync(cancellationToken);
-                    _logger.LogInformation("Spotify pause (profile) for event {EventType}", normalizedEvent.Type);
-                    break;
-                case EventAction.Resume:
-                    await _spotifyClient.ResumeAsync(cancellationToken);
-                    _logger.LogInformation("Spotify resume (profile) for event {EventType}", normalizedEvent.Type);
-                    break;
-            }
+            await _playbackPolicy.BeforePlayAsync(normalizedEvent, cancellationToken);
+            await _trackPlaybackService.PlayTrackAsync(uri, cancellationToken);
+            _logger.LogInformation("Spotify play (profile) for event {EventKey}", normalizedEvent.EventKey);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to apply Spotify profile rule for event {EventType}", normalizedEvent.Type);
+            _logger.LogError(ex, "Failed to apply Spotify profile rule for event {EventKey}", normalizedEvent.EventKey);
         }
     }
 
-    private async Task<EventRule?> ResolveRuleAsync(EventType eventType, CancellationToken cancellationToken)
+    private async Task<EventTrackRule?> ResolveRuleAsync(string eventKey, CancellationToken cancellationToken)
     {
         var profilesConfig = await _profileService.GetAsync(cancellationToken);
         var profiles = profilesConfig.Profiles;
@@ -88,7 +83,7 @@ public sealed class SpotifyProfileAction : IEventAction
             return null;
         }
 
-        return activeProfile.Rules.TryGetValue(eventType, out var rule) ? rule : null;
+        return activeProfile.FindRule(eventKey);
     }
 
     private static MusicProfile? ResolveActiveProfile(

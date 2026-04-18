@@ -1,4 +1,5 @@
-using Core.Models;
+using System;
+using System.Linq;
 
 namespace Core.Configuration;
 
@@ -10,19 +11,22 @@ public sealed record MusicProfilesConfig(
 public sealed record MusicProfile(
     string Id,
     string Name,
-    Dictionary<EventType, EventRule> Rules
-);
-
-public sealed record EventRule(
-    EventAction Action,
-    List<string> Tracks,
-    int? Volume
-);
-
-public enum EventAction
+    List<EventTrackRule> Rules
+)
 {
-    None,
-    Play,
-    Pause,
-    Resume
+    public EventTrackRule? FindRule(string eventKey)
+    {
+        if (string.IsNullOrWhiteSpace(eventKey))
+        {
+            return null;
+        }
+
+        return Rules.FirstOrDefault(rule =>
+            string.Equals(rule.EventKey, eventKey, StringComparison.OrdinalIgnoreCase));
+    }
 }
+
+public sealed record EventTrackRule(
+    string EventKey,
+    List<string> Tracks
+);

@@ -1,3 +1,4 @@
+using System;
 using Core.Diff;
 using Core.Models;
 
@@ -42,13 +43,18 @@ public sealed class EventDetector
             _lastActivityAt = timestamp;
         }
 
-        if (IsDeath(diff) && IsPastCooldown(_lastDeathAt, timestamp, _options.DeathCooldown))
+        if (_options.EnableRoundStart && IsRoundStart(diff))
+        {
+            events.Add(NormalizedEvent.RoundStart(snapshot, BuildRoundStartDetail(snapshot)));
+        }
+
+        if (_options.EnableDeath && IsDeath(diff) && IsPastCooldown(_lastDeathAt, timestamp, _options.DeathCooldown))
         {
             events.Add(NormalizedEvent.Death(snapshot));
             _lastDeathAt = timestamp;
         }
 
-        if (IsCombatCondition(diff, snapshot))
+        if (_options.EnableCombat && IsCombatCondition(diff, snapshot))
         {
             _combatDebounceStartedAt ??= timestamp;
 
@@ -65,7 +71,7 @@ public sealed class EventDetector
             _combatDebounceStartedAt = null;
         }
 
-        if (IsIdleCondition(diff, snapshot))
+        if (_options.EnableIdle && IsIdleCondition(diff, snapshot))
         {
             _idleDebounceStartedAt ??= timestamp;
 
@@ -99,6 +105,27 @@ public sealed class EventDetector
     private bool IsDeath(SnapshotDiff diff)
     {
         return diff.Activity.PreviousIsAlive && !diff.Activity.CurrentIsAlive;
+    }
+
+    private bool IsRoundStart(SnapshotDiff diff)
+    {
+        var previousRound = diff.Previous?.GetModule<RoundModule>();
+        var currentRound = diff.Current.GetModule<RoundModule>();
+        if (currentRound is null)
+        {
+            return false;
+        }
+
+        var roundIncremented = previousRound?.Round.HasValue == true
+            && currentRound.Round.HasValue
+            && currentRound.Round.Value > previousRound.Round.Value;
+
+        var targetPhase = _options.RoundStartPhase;
+        var phaseWentLive = !string.IsNullOrWhiteSpace(targetPhase)
+            && string.Equals(currentRound.Phase, targetPhase, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(previousRound?.Phase, targetPhase, StringComparison.OrdinalIgnoreCase);
+
+        return roundIncremented || phaseWentLive;
     }
 
     private bool IsCombatCondition(SnapshotDiff diff, GameSnapshot snapshot)
@@ -140,5 +167,16 @@ public sealed class EventDetector
     private static bool IsPastDebounce(DateTimeOffset? startedAt, DateTimeOffset now, TimeSpan debounce)
     {
         return startedAt.HasValue && now - startedAt.Value >= debounce;
+    }
+
+    private static string? BuildRoundStartDetail(GameSnapshot snapshot)
+    {
+        var round = snapshot.GetModule<RoundModule>();
+        if (round?.Round is null)
+        {
+            return null;
+        }
+
+        return $"round={round.Round}";
     }
 }

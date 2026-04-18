@@ -13,7 +13,7 @@ public sealed class RulesEngine : IRulesEngine
     private readonly ISnapshotStore _snapshotStore;
     private readonly SnapshotDiffer _differ;
     private readonly EventDetector _detector;
-    private readonly IReadOnlyDictionary<EventType, IReadOnlyList<string>> _actionMap;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<string>> _actionMap;
     private readonly IReadOnlyDictionary<string, IEventAction> _actionsByKey;
 
     public RulesEngine(
@@ -31,11 +31,11 @@ public sealed class RulesEngine : IRulesEngine
             .GroupBy(action => action.Key, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
-        _actionMap = (options?.Value?.ActionMap ?? new Dictionary<EventType, List<string>>())
+        _actionMap = (options?.Value?.ActionMap ?? new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase))
             .ToDictionary(
-                pair => pair.Key,
+                pair => EventKeys.Normalize(pair.Key),
                 pair => (IReadOnlyList<string>)pair.Value,
-                EqualityComparer<EventType>.Default
+                StringComparer.OrdinalIgnoreCase
             );
     }
 
@@ -55,7 +55,7 @@ public sealed class RulesEngine : IRulesEngine
 
         foreach (var normalizedEvent in events)
         {
-            if (!_actionMap.TryGetValue(normalizedEvent.Type, out var actionKeys))
+            if (!_actionMap.TryGetValue(normalizedEvent.EventKey, out var actionKeys))
             {
                 continue;
             }

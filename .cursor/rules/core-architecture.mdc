@@ -1,0 +1,23 @@
+﻿---
+description: Core architecture rules for snapshots, events, and Spotify abstractions
+globs: Core/**/*.cs, Core.Tests/**/*.cs
+alwaysApply: false
+---
+
+# Core Rules
+
+- Keep domain logic independent from UI and host concerns.
+- Use modular snapshots and small, composable mappers.
+- Prefer string event keys for routing and profile matching.
+- Keep `EventDetector` stateful and driven by options, not hardcoded behavior.
+- Keep Spotify-facing abstractions behind `ISpotifyClient` and related interfaces.
+- Add or update unit tests when changing diffing, detection, routing, or action behavior.
+
+## Example
+
+```csharp
+// Good: detector emits a stable event key.
+var evt = NormalizedEvent.Death(snapshot);
+
+// Bad: host/UI-specific logic inside Core.
+```

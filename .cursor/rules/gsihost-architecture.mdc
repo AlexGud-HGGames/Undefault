@@ -1,0 +1,24 @@
+﻿---
+description: GsiHost rules for HTTP endpoints, CS2 setup, config, and Spotify hosting
+globs: GsiHost/**/*.cs, GsiHost.Tests/**/*.cs
+alwaysApply: false
+---
+
+# GsiHost Rules
+
+- Keep endpoints thin; move workflow logic into services.
+- Register host services in `Program.cs`, but keep domain decisions out of it.
+- CS2 setup belongs in `Cs2SetupService` and should stay config-driven.
+- Treat mock and real Spotify as runtime modes, not duplicated code paths.
+- Keep logs short, informative, and low-noise.
+- Add integration tests for endpoint, setup, and configuration changes.
+
+## Example
+
+```csharp
+// Good: endpoint delegates to a service.
+app.MapPost("/setup/cs2/install", async (ICs2SetupService setup, CancellationToken ct) =>
+    Results.Ok(await setup.InstallAsync(ct)));
+
+// Bad: generating cfg content directly in Program.cs.
+```

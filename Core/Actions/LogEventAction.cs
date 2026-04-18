@@ -19,7 +19,8 @@ public sealed class LogEventAction : IEventAction
     public Task ExecuteAsync(NormalizedEvent normalizedEvent, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation(
-            "Event {EventType} at {Timestamp} (GameId={GameId}, MatchId={MatchId}, PlayerId={PlayerId})",
+            "Event {EventKey} ({EventType}) at {Timestamp} (GameId={GameId}, MatchId={MatchId}, PlayerId={PlayerId})",
+            normalizedEvent.EventKey,
             normalizedEvent.Type,
             normalizedEvent.Timestamp,
             normalizedEvent.Context.GameId,

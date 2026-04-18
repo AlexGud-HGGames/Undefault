@@ -2,6 +2,7 @@ namespace Core.Models;
 
 public sealed record NormalizedEvent(
     EventType Type,
+    string EventKey,
     DateTimeOffset Timestamp,
     EventContext Context,
     TimeSpan? Duration,
@@ -12,6 +13,19 @@ public sealed record NormalizedEvent(
     {
         return new NormalizedEvent(
             EventType.Death,
+            EventKeys.Death,
+            snapshot.Timestamp,
+            EventContext.FromSnapshot(snapshot),
+            Duration: null,
+            Detail: detail
+        );
+    }
+
+    public static NormalizedEvent RoundStart(GameSnapshot snapshot, string? detail = null)
+    {
+        return new NormalizedEvent(
+            EventType.RoundStart,
+            EventKeys.RoundStart,
             snapshot.Timestamp,
             EventContext.FromSnapshot(snapshot),
             Duration: null,
@@ -23,6 +37,7 @@ public sealed record NormalizedEvent(
     {
         return new NormalizedEvent(
             EventType.Combat,
+            EventKeys.Combat,
             snapshot.Timestamp,
             EventContext.FromSnapshot(snapshot),
             Duration: null,
@@ -34,6 +49,7 @@ public sealed record NormalizedEvent(
     {
         return new NormalizedEvent(
             EventType.Idle,
+            EventKeys.Idle,
             snapshot.Timestamp,
             EventContext.FromSnapshot(snapshot),
             idleDuration,

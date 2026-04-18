@@ -135,6 +135,124 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         roundTrip.Profiles[0].FindRule("CUSTOM:MUSIC_OFF")!.Command.Should().Be(MusicControlCommands.Pause);
     }
 
+    [Fact]
+    public async Task SpotifyProfilePlayback_UsesSmartTrackStartOffset_WhenEnabled()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true
+        };
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildAppSettingsJson(
+                "http://127.0.0.1:5292",
+                enableSmartTrackStart: true,
+                roundStartAction: "spotify.profile",
+                deathAction: "spotify.control_profile"),
+            seedContentRoot: tempRoot =>
+            {
+                File.WriteAllText(
+                    Path.Combine(tempRoot, "profiles.json"),
+                    """
+                    {
+                      "ActiveProfileId": "default",
+                      "Profiles": [
+                        {
+                          "Id": "default",
+                          "Name": "Default",
+                          "Rules": [
+                            {
+                              "EventKey": "round_start",
+                              "Tracks": [ "spotify:track:anthem" ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """);
+
+                File.WriteAllText(
+                    Path.Combine(tempRoot, "smart-track-starts.json"),
+                    """
+                    {
+                      "Entries": [
+                        {
+                          "TrackUri": "spotify:track:anthem",
+                          "StartPositionMs": 42000,
+                          "CueLabel": "drop"
+                        }
+                      ]
+                    }
+                    """);
+            });
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1000, 100, round: 4, phase: "freezetime"));
+        var response = await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1001, 100, round: 4, phase: "live"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        spotifyClient.PlayedUris.Should().ContainSingle().Which.Should().Be("spotify:track:anthem");
+        spotifyClient.PlayedPositions.Should().ContainSingle().Which.Should().Be(42_000);
+    }
+
+    [Fact]
+    public async Task SpotifyProfilePlayback_IgnoresSmartTrackStartMetadata_WhenDisabled()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true
+        };
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildAppSettingsJson(
+                "http://127.0.0.1:5292",
+                enableSmartTrackStart: false,
+                roundStartAction: "spotify.profile",
+                deathAction: "spotify.control_profile"),
+            seedContentRoot: tempRoot =>
+            {
+                File.WriteAllText(
+                    Path.Combine(tempRoot, "profiles.json"),
+                    """
+                    {
+                      "ActiveProfileId": "default",
+                      "Profiles": [
+                        {
+                          "Id": "default",
+                          "Name": "Default",
+                          "Rules": [
+                            {
+                              "EventKey": "round_start",
+                              "Tracks": [ "spotify:track:anthem" ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """);
+
+                File.WriteAllText(
+                    Path.Combine(tempRoot, "smart-track-starts.json"),
+                    """
+                    {
+                      "Entries": [
+                        {
+                          "TrackUri": "spotify:track:anthem",
+                          "StartPositionMs": 42000
+                        }
+                      ]
+                    }
+                    """);
+            });
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1000, 100, round: 4, phase: "freezetime"));
+        var response = await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1001, 100, round: 4, phase: "live"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        spotifyClient.PlayedUris.Should().ContainSingle().Which.Should().Be("spotify:track:anthem");
+        spotifyClient.PlayedPositions.Should().ContainSingle().Which.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Cs2SetupStatus_ReflectsAutoInstalledConfigUsingConfiguredUri()
     {
         const string gsiBaseUrl = "http://127.0.0.1:6875";
@@ -200,6 +318,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     {
         public bool Authenticated { get; set; }
         public PlaybackState? CurrentPlayback { get; set; }
+        public List<string?> PlayedUris { get; } = new();
+        public List<int?> PlayedPositions { get; } = new();
         public List<int> VolumeCalls { get; } = new();
 
         public Task<PlaybackState?> GetCurrentPlaybackAsync(CancellationToken cancellationToken = default)
@@ -207,7 +327,17 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             return Task.FromResult(CurrentPlayback);
         }
 
-        public Task PlayAsync(string? uri = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task PlayAsync(string? uri = null, CancellationToken cancellationToken = default)
+        {
+            return PlayAsync(uri, positionMs: null, cancellationToken);
+        }
+
+        public Task PlayAsync(string? uri = null, int? positionMs = null, CancellationToken cancellationToken = default)
+        {
+            PlayedUris.Add(uri);
+            PlayedPositions.Add(positionMs);
+            return Task.CompletedTask;
+        }
         public Task PauseAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task ResumeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task SetVolumeAsync(int volume, CancellationToken cancellationToken = default)
@@ -230,7 +360,10 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         public Task<PlaybackState?> GetCurrentPlaybackAsync(CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("Spotify unavailable");
 
-        public Task PlayAsync(string? uri = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task PlayAsync(string? uri = null, CancellationToken cancellationToken = default)
+            => PlayAsync(uri, positionMs: null, cancellationToken);
+
+        public Task PlayAsync(string? uri = null, int? positionMs = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task PauseAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task ResumeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task SetVolumeAsync(int volume, CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -240,13 +373,18 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             => Task.FromResult(new SpotifyAuthResult(string.Empty, string.Empty, DateTimeOffset.UtcNow, Array.Empty<string>()));
     }
 
-    private TestHostContext CreateTestHost(ISpotifyClient spotifyClient, string gsiBaseUrl = "http://127.0.0.1:5292")
+    private TestHostContext CreateTestHost(
+        ISpotifyClient spotifyClient,
+        string gsiBaseUrl = "http://127.0.0.1:5292",
+        string? appSettingsJson = null,
+        Action<string>? seedContentRoot = null)
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "UndefaultIt.Tests", Guid.NewGuid().ToString("N"));
         var cs2Root = Path.Combine(tempRoot, "Counter-Strike Global Offensive");
         Directory.CreateDirectory(Path.Combine(cs2Root, "game", "csgo", "cfg"));
         Directory.CreateDirectory(tempRoot);
-        File.WriteAllText(Path.Combine(tempRoot, "appsettings.json"), BuildAppSettingsJson(gsiBaseUrl));
+        File.WriteAllText(Path.Combine(tempRoot, "appsettings.json"), appSettingsJson ?? BuildAppSettingsJson(gsiBaseUrl));
+        seedContentRoot?.Invoke(tempRoot);
 
         var previousOverride = Environment.GetEnvironmentVariable("UNDEFAULTIT_CS2_PATH");
         Environment.SetEnvironmentVariable("UNDEFAULTIT_CS2_PATH", cs2Root);
@@ -268,7 +406,11 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             previousOverride);
     }
 
-    private static string BuildAppSettingsJson(string gsiBaseUrl)
+    private static string BuildAppSettingsJson(
+        string gsiBaseUrl,
+        bool enableSmartTrackStart = false,
+        string roundStartAction = "spotify.control_profile",
+        string deathAction = "spotify.control_profile")
     {
         return $$"""
         {
@@ -306,10 +448,14 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             "MuteVolume": 0,
             "FallbackRestoreVolume": 50
           },
+          "SmartTrackStart": {
+            "Enabled": {{(enableSmartTrackStart ? "true" : "false")}},
+            "PreloadOnStartup": true
+          },
           "RulesEngine": {
             "ActionMap": {
-              "round_start": [ "spotify.control_profile" ],
-              "death": [ "spotify.control_profile" ]
+              "round_start": [ "{{roundStartAction}}" ],
+              "death": [ "{{deathAction}}" ]
             }
           }
         }
