@@ -5,10 +5,14 @@ using Core.Configuration;
 using Core.Services;
 using Core.Spotify;
 using Core.Spotify.Models;
+using Cs2Simulator.Runtime;
+using Cs2Simulator.Scenarios.Scenarios;
 using FluentAssertions;
+using GsiHost.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GsiHost.Tests;
 
@@ -38,6 +42,15 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         var eventsCount = doc.RootElement.GetProperty("events").GetInt32();
 
         eventsCount.Should().BeGreaterThanOrEqualTo(1);
+
+        var appState = host.Factory.Services.GetRequiredService<AppStateService>();
+        appState.GetRecentEvents().Count.Should().BeGreaterThanOrEqualTo(1);
+
+        var eventsJson = await host.Client.GetStringAsync("/events");
+        using (var evDoc = JsonDocument.Parse(eventsJson))
+        {
+            evDoc.RootElement.GetArrayLength().Should().BeGreaterThanOrEqualTo(1);
+        }
     }
 
     [Fact]
@@ -274,6 +287,85 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
+    public async Task PostGsiReset_ReturnsNoContent_AndClearsState()
+    {
+        using var host = CreateTestHost(new FakeSpotifyClient());
+
+        var pre1 = await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2000, 100));
+        pre1.StatusCode.Should().Be(HttpStatusCode.OK);
+        var pre2 = await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2001, 0));
+        pre2.StatusCode.Should().Be(HttpStatusCode.OK);
+        var preBody = await pre2.Content.ReadAsStringAsync();
+        using (var preDoc = JsonDocument.Parse(preBody))
+        {
+            preDoc.RootElement.GetProperty("events").GetInt32().Should().BeGreaterThanOrEqualTo(1);
+        }
+
+        var eventsBeforeReset = await host.Client.GetStringAsync("/events");
+        using (var evDoc = JsonDocument.Parse(eventsBeforeReset))
+        {
+            evDoc.RootElement.GetArrayLength().Should().BeGreaterThan(0);
+        }
+
+        var resetResponse = await host.Client.PostAsync("/gsi/reset", content: null);
+        resetResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var eventsAfterReset = await host.Client.GetStringAsync("/events");
+        using (var evDoc2 = JsonDocument.Parse(eventsAfterReset))
+        {
+            evDoc2.RootElement.GetArrayLength().Should().Be(0);
+        }
+
+        var post1 = await host.Client.PostAsJsonAsync("/gsi", CreatePayload(3000, 100));
+        post1.StatusCode.Should().Be(HttpStatusCode.OK);
+        var post1Body = await post1.Content.ReadAsStringAsync();
+        using (var post1Doc = JsonDocument.Parse(post1Body))
+        {
+            post1Doc.RootElement.GetProperty("events").GetInt32().Should().Be(0);
+        }
+
+        var post2 = await host.Client.PostAsJsonAsync("/gsi", CreatePayload(3001, 0));
+        post2.StatusCode.Should().Be(HttpStatusCode.OK);
+        var post2Body = await post2.Content.ReadAsStringAsync();
+        using var post2Doc = JsonDocument.Parse(post2Body);
+        post2Doc.RootElement.GetProperty("events").GetInt32().Should().BeGreaterThanOrEqualTo(1);
+    }
+
+    [Fact]
+    public async Task PostGsiReset_ReturnsForbidden_WhenAllowResetIsFalse()
+    {
+        using var host = CreateTestHost(
+            new FakeSpotifyClient(),
+            appSettingsJson: BuildAppSettingsJson("http://127.0.0.1:5292", allowGsiReset: false));
+
+        var response = await host.Client.PostAsync("/gsi/reset", content: null);
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Cs2Simulator_TSideRound_ViaHttpTransport_SurfacesRoundStartOnEvents()
+    {
+        using var host = CreateTestHost(new FakeSpotifyClient());
+        EnsureClientBaseAddressHasTrailingSlash(host.Client);
+
+        var transport = new HttpGsiTransport(host.Client, NullLogger<HttpGsiTransport>.Instance);
+        var runner = new ScenarioRunner(transport, new NullStepGate(), NullLogger<ScenarioRunner>.Instance);
+        await runner.RunAsync(
+            new TSideRoundScenario(),
+            new ScenarioRunOptions { ResetBeforeRun = true, Speed = Speed.Max, VerboseLogging = false },
+            CancellationToken.None);
+
+        var body = await host.Client.GetStringAsync("/events");
+        using var doc = JsonDocument.Parse(body);
+        doc.RootElement.EnumerateArray().Count(e =>
+                string.Equals(
+                    TryGetStringIgnoreCase(e, "eventKey"),
+                    "round_start",
+                    StringComparison.Ordinal))
+            .Should().Be(1);
+    }
+
+    [Fact]
     public async Task DefaultControlProfile_DucksOnRoundStart_AndRestoresOnDeath()
     {
         var spotifyClient = new FakeSpotifyClient
@@ -406,11 +498,40 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             previousOverride);
     }
 
+    private static string? TryGetStringIgnoreCase(JsonElement element, string propertyName)
+    {
+        foreach (var p in element.EnumerateObject())
+        {
+            if (string.Equals(p.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                return p.Value.GetString();
+            }
+        }
+
+        return null;
+    }
+
+    private static void EnsureClientBaseAddressHasTrailingSlash(HttpClient client)
+    {
+        var baseUri = client.BaseAddress;
+        if (baseUri is null)
+        {
+            return;
+        }
+
+        var s = baseUri.ToString();
+        if (!s.EndsWith('/'))
+        {
+            client.BaseAddress = new Uri(s + "/");
+        }
+    }
+
     private static string BuildAppSettingsJson(
         string gsiBaseUrl,
         bool enableSmartTrackStart = false,
         string roundStartAction = "spotify.control_profile",
-        string deathAction = "spotify.control_profile")
+        string deathAction = "spotify.control_profile",
+        bool allowGsiReset = true)
     {
         return $$"""
         {
@@ -433,7 +554,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
           "Gsi": {
             "Method": "POST",
             "Path": "/gsi",
-            "Url": "{{gsiBaseUrl}}"
+            "Url": "{{gsiBaseUrl}}",
+            "AllowReset": {{(allowGsiReset ? "true" : "false")}}
           },
           "UseMockSpotify": true,
           "EventDetector": {
@@ -462,6 +584,11 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         """;
     }
 
+    private sealed class NullStepGate : IStepGate
+    {
+        public Task WaitAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
     private sealed class TestHostContext : IDisposable
     {
         private readonly WebApplicationFactory<Program> _factory;
@@ -482,6 +609,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         }
 
         public HttpClient Client { get; }
+
+        public WebApplicationFactory<Program> Factory => _factory;
 
         public string TempRoot { get; }
 

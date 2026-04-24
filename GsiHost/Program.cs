@@ -6,6 +6,7 @@ using Core.Rules;
 using Core.Services;
 using Core.Spotify;
 using Core.Stores;
+using GsiHost.Configuration;
 using GsiHost.Dtos;
 using GsiHost.Mapping;
 using GsiHost.Mapping.Modules;
@@ -31,6 +32,7 @@ builder.Services.AddSingleton<IRulesEngine, RulesEngine>();
 builder.Services.AddSingleton<GsiProcessingService>();
 builder.Services.AddSingleton<AppStateService>();
 builder.Services.AddSingleton<IAppStateService>(sp => sp.GetRequiredService<AppStateService>());
+builder.Services.AddSingleton<IGsiResetService, GsiResetService>();
 builder.Services.AddSingleton<IConfigurationService, AppSettingsConfigurationService>();
 builder.Services.AddSingleton<IControlProfileService, JsonControlProfileService>();
 builder.Services.AddSingleton<IProfileService, JsonProfileService>();
@@ -54,6 +56,8 @@ builder.Services.Configure<SpotifyVolumeDuckOptions>(
     builder.Configuration.GetSection("SpotifyVolumeDuck"));
 builder.Services.Configure<SmartTrackStartOptions>(
     builder.Configuration.GetSection("SmartTrackStart"));
+builder.Services.Configure<GsiOptions>(
+    builder.Configuration.GetSection(GsiOptions.SectionName));
 
 var app = builder.Build();
 
@@ -81,6 +85,17 @@ app.MapPost("/gsi", async (
 {
     var events = await processor.ProcessAsync(payload, cancellationToken);
     return Results.Ok(new { events = events.Count });
+});
+
+app.MapPost("/gsi/reset", (IOptions<GsiOptions> gsiOptions, IGsiResetService resetService) =>
+{
+    if (!gsiOptions.Value.AllowReset)
+    {
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    }
+
+    resetService.Reset();
+    return Results.NoContent();
 });
 
 app.MapGet("/status", async (IAppStateService appStateService, CancellationToken cancellationToken) =>
@@ -206,6 +221,11 @@ app.MapGet("/spotify/callback", async (
 {
     return await HandleSpotifyCallbackAsync(code, services, cancellationToken);
 });
+
+// AppStateService subscribes to GsiProcessingService.Processed in its ctor. /gsi does not
+// resolve it, so without eager creation the recent-events ring would stay empty until some
+// other endpoint (or reset) touched the singleton.
+_ = app.Services.GetRequiredService<AppStateService>();
 
 app.Run();
 

@@ -16,7 +16,8 @@ UndefaultIt is a console-first local backend: CS2 Game State Integration posts t
 
 - `Core/` — models, diffing, detection, rules, Spotify abstractions, `Core/Music/` contracts.
 - `GsiHost/` — HTTP host, GSI mapping, processing pipeline, config, OAuth, CS2 setup.
-- `Core.Tests/`, `GsiHost.Tests/` — unit and integration coverage.
+- `Cs2Simulator/`, `Cs2Simulator.Runtime/`, `Cs2Simulator.Scenarios/` — local CS2 GSI simulator (console + transport/runner library + scenarios); see [docs/cs2-simulator.md](docs/cs2-simulator.md).
+- `Core.Tests/`, `GsiHost.Tests/`, `Cs2Simulator.Tests/` — unit and integration coverage.
 
 ### Runtime flow
 
@@ -99,12 +100,23 @@ dotnet run --project .\GsiHost -- --quick
 
 4. Optional: call the host over HTTP (for example `Invoke-RestMethod http://127.0.0.1:5292/status`) to confirm it is up.
 
+### Local CS2 simulator
+
+For development and testing without launching CS2, run the bundled simulator
+in a second terminal: `dotnet run --project .\Cs2Simulator`. It posts
+realistic CS2-shaped payloads (`provider`, `map`, `round`, `player`) to
+`POST /gsi` over scenarios like `t-side-round`, `ct-defense`, `clutch-1v3`,
+`death-spectator`, and `tactical-pause`. Configurable speed, step mode,
+and a `--scenario X --once` flag for scripted runs. See
+[docs/cs2-simulator.md](docs/cs2-simulator.md).
+
 ## Backend Endpoints
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/` | Short host banner (sanity check) |
 | `POST` | `/gsi` | Accept CS2 GSI JSON |
+| `POST` | `/gsi/reset` | Reset detector state and snapshot store (used by the local simulator) |
 | `GET` | `/status` | Host / runtime status |
 | `GET` | `/events` | Recent normalized events |
 | `GET` | `/config` | Read editable host config |
@@ -126,7 +138,7 @@ dotnet run --project .\GsiHost -- --quick
 
 | Section / key | What you use it for |
 |----------------|---------------------|
-| `Gsi` (`Method`, `Path`, `Url`) | Generated CS2 GSI target URL and related wiring |
+| `Gsi` (`Method`, `Path`, `Url`, `AllowReset`) | Generated CS2 GSI target URL and related wiring; `AllowReset` gates `POST /gsi/reset` (default true) |
 | `Spotify` | OAuth client id/secret, redirect URI, scopes |
 | `UseMockSpotify` | Mock vs real Spotify client (console bootstrap forces real for the normal console run) |
 | `EventDetector` | Which normalized events fire (`EnableRoundStart`, `EnableDeath`, `EnableCombat`, `EnableIdle`, `RoundStartPhase`, `DeathCooldown`; optional combat/idle tuning keys match `EventDetectorOptions` in Core) |
@@ -182,6 +194,7 @@ Detailed docs are in **[`docs/`](docs/README.md)**:
 - [`docs/README.md`](docs/README.md) — documentation index
 - [`docs/backend-architecture.md`](docs/backend-architecture.md) — full current backend pipeline (`RulesEngine`, actions, files, endpoints)
 - [`docs/cs2-gsi-events.md`](docs/cs2-gsi-events.md) — CS2 signal surface and future profile ideas
+- [`docs/cs2-simulator.md`](docs/cs2-simulator.md) — local CS2 GSI simulator (scenarios, CLI, event-mapping)
 - [`docs/music-safety-state-spec.md`](docs/music-safety-state-spec.md) — authoritative `Unknown` / `Safe` / `Danger` model
 - [`docs/failure-safety-spec.md`](docs/failure-safety-spec.md) — stale input, Spotify failures, degraded device rules
 - [`docs/volume-composition-spec.md`](docs/volume-composition-spec.md) — canonical gain / transport merge rules

@@ -59,8 +59,32 @@ public sealed class AppStateService : IAppStateService, IDisposable
         }
     }
 
+    /// <summary>
+    /// Clears the recent-events ring (e.g. after <c>POST /gsi/reset</c>) so
+    /// <c>GET /events</c> does not show stale entries from before the reset.
+    /// </summary>
+    public void ClearRecentEvents()
+    {
+        lock (_lock)
+        {
+            _recentEvents.Clear();
+        }
+    }
+
     private void OnProcessed(object? sender, GsiProcessedEventArgs args)
     {
+        lock (_lock)
+        {
+            foreach (var normalizedEvent in args.Events)
+            {
+                _recentEvents.Add(normalizedEvent);
+                if (_recentEvents.Count > MaxEvents)
+                {
+                    _recentEvents.RemoveAt(0);
+                }
+            }
+        }
+
         _ = UpdateAsync(args);
     }
 
@@ -106,15 +130,6 @@ public sealed class AppStateService : IAppStateService, IDisposable
         lock (_lock)
         {
             _current = status;
-
-            foreach (var normalizedEvent in args.Events)
-            {
-                _recentEvents.Add(normalizedEvent);
-                if (_recentEvents.Count > MaxEvents)
-                {
-                    _recentEvents.RemoveAt(0);
-                }
-            }
         }
 
         foreach (var normalizedEvent in args.Events)

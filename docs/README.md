@@ -8,6 +8,7 @@ Long-form documentation for UndefaultIt lives in this folder. The [repository RE
 |----------|----------------|
 | [Backend architecture](backend-architecture.md) | End-to-end pipeline (GSI → rules → actions), Spotify control path, HTTP API, config files, detector and rules engine behavior |
 | [CS2 GSI events](cs2-gsi-events.md) | Practical CS2 signal space vs current mapping; ideas for future profile rules |
+| [CS2 GSI simulator](cs2-simulator.md) | Local console + scenarios library that posts realistic CS2 payloads to `POST /gsi` for development and testing |
 | [Roadmap](roadmap.md) | Product direction and planned work |
 | [Quick launch](quick-launch.md) | Mock/skip-based startup for local testing and failure handling |
 | [Music safety state](music-safety-state-spec.md) | Authoritative `Unknown` / `Safe` / `Danger` contract, dominance, hysteresis |
