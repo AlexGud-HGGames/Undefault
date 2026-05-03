@@ -16,7 +16,9 @@ All mappings must be documented in this file as they are implemented (append sub
 
 ## Dota 2 — future shape
 
-- Separate **mapper** + **TitlePlugin** producing same `GameClockSnapshot` and neutral signals.
+- Add a separate `DotaGameAdapter : IGameAdapter<DotaPayloadDto>` (or equivalent raw JSON input type) rather than expanding CS2 mappers.
+- The adapter output target is `Core/Adapters/AdapterObservation.cs`: `GameSnapshot Raw`, `GameClockSnapshot Clock`, `NeutralContext Neutral`, title domain events, and `SafetyFacts`.
+- Dota-specific facts may remain in Dota snapshot modules for diagnostics, but shared music behavior should consume `Clock`, `Neutral`, and `SafetyFacts`.
 - No shared FSM named after CS rounds; engagement/objective pressure only.
 
 ## Versioning

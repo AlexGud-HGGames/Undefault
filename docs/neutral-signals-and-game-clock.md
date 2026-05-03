@@ -4,39 +4,47 @@ Shared Core and host logic must **not** embed CS2-only mode names as cross-title
 
 ## GameClock (authoritative time contract)
 
-| Field | Purpose |
-|-------|---------|
-| `WallTimeUtc` | Host clock for staleness and HTTP. |
-| `GameTimeSeconds` | If available from title; else null. |
-| `IsGamePaused` | Tactical pause / freeze / system pause. |
+
+| Field               | Purpose                                                                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `WallTimeUtc`       | Host clock for staleness and HTTP.                                                                                                               |
+| `GameTimeSeconds`   | If available from title; else null.                                                                                                              |
+| `IsGamePaused`      | Tactical pause / freeze / system pause.                                                                                                          |
 | `MatchPhaseNeutral` | Enum such as `PreLive`, `Live`, `Intermission`, `PostMatch`, `Unknown` — **not** `freeze` spelled as CS jargon in shared contracts if avoidable. |
-| `RoundIndex` | Optional integer for round-based titles; null for MOBA. |
+| `RoundIndex`        | Optional integer for round-based titles; null for MOBA.                                                                                          |
+
 
 **Rule:** Envelopes schedule against **`GameClock`** + offsets, not wall clock alone, so pauses do not skew ramps.
 
 ## Neutral signal examples
 
-| Signal | Type | Notes |
-|--------|------|-------|
-| `EngagementPressure` | `float 0..1` | Graded fight / combat tension. |
-| `ObjectivePressure` | `float 0..1` | Bomb / objective proximity. |
-| `SpectatorOrObserver` | `bool` | If true, adaptive music may be disabled by policy. |
-| `TransportIntentNeutral` | enum | e.g. `NoChange`, `PreferPause`, `PreferResume`, `PreferSilence`. |
+
+| Signal                   | Type         | Notes                                                            |
+| ------------------------ | ------------ | ---------------------------------------------------------------- |
+| `EngagementPressure`     | `float 0..1` | Graded fight / combat tension.                                   |
+| `ObjectivePressure`      | `float 0..1` | Bomb / objective proximity.                                      |
+| `SpectatorOrObserver`    | `bool`       | If true, adaptive music may be disabled by policy.               |
+| `TransportIntentNeutral` | enum         | e.g. `NoChange`, `PreferPause`, `PreferResume`, `PreferSilence`. |
+
 
 CS2 plugin maps `RoundModule`, bomb DTOs, etc. → these signals. Dota plugin maps its GSI → same shapes.
 
-## TitlePlugin contract (conceptual)
+## GameAdapter contract (conceptual)
 
 ```
-OnSnapshot(prev, current, clock) → {
-  domainEvents?,
-  neutralSignalUpdates,
+Adapt(rawPayload, receivedAtUtc) → AdapterObservation {
+  rawSnapshot,
+  clock,
+  neutralContext,
+  domainEvents,
   safetyFacts
 }
 ```
 
 Implementation language may vary; the **data** crossing into shared music engine must be neutral.
 
+`GameClockSnapshot` is not nested inside `NeutralContext`. Both are sibling fields on `AdapterObservation`: clock is the authoritative time contract, while neutral context carries gameplay/music facts such as alive state, pressure, spectator status, and transport intent.
+
 ## Type reference (Core)
 
-See `Core/Music/GameClockSnapshot.cs` and related types in `Core/Music/`.
+See `Core/Music/GameClockSnapshot.cs`, `Core/Adapters/AdapterObservation.cs`, `Core/Adapters/NeutralContext.cs`, and `Core/Adapters/SafetyFacts.cs`.
