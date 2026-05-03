@@ -1,14 +1,14 @@
 using Core.Actions;
 using Core.Actions.Spotify;
+using Core.Adapters;
 using Core.Configuration;
 using Core.Diff;
 using Core.Rules;
 using Core.Services;
 using Core.Spotify;
 using Core.Stores;
-using Core.Adapters;
-using GsiHost.Adapters;
 using GsiHost.Configuration;
+using GsiHost.Adapters;
 using GsiHost.Dtos;
 using GsiHost.Mapping;
 using GsiHost.Mapping.Modules;
@@ -33,6 +33,9 @@ builder.Services.AddSingleton<ISmartTrackStartService, JsonSmartTrackStartServic
 builder.Services.AddSingleton<ITrackPlaybackService, TrackPlaybackService>();
 builder.Services.AddSingleton<IRulesEngine, RulesEngine>();
 builder.Services.AddSingleton<GsiProcessingService>();
+builder.Services.AddSingleton<TimelineCaptureService>();
+builder.Services.AddSingleton<UserActionService>();
+builder.Services.AddHostedService<WindowsHotkeyService>();
 builder.Services.AddSingleton<AppStateService>();
 builder.Services.AddSingleton<IAppStateService>(sp => sp.GetRequiredService<AppStateService>());
 builder.Services.AddSingleton<IGsiResetService, GsiResetService>();
@@ -61,8 +64,17 @@ builder.Services.Configure<SmartTrackStartOptions>(
     builder.Configuration.GetSection("SmartTrackStart"));
 builder.Services.Configure<GsiOptions>(
     builder.Configuration.GetSection(GsiOptions.SectionName));
+builder.Services.Configure<RuntimeOptions>(
+    builder.Configuration.GetSection(RuntimeOptions.SectionName));
+builder.Services.Configure<TimelineOptions>(
+    builder.Configuration.GetSection(TimelineOptions.SectionName));
+builder.Services.Configure<ManualMusicActionOptions>(
+    builder.Configuration.GetSection(ManualMusicActionOptions.SectionName));
+builder.Services.Configure<KeybindOptions>(
+    builder.Configuration.GetSection(KeybindOptions.SectionName));
 
 var app = builder.Build();
+var runtimeOptions = app.Services.GetRequiredService<IOptions<RuntimeOptions>>().Value;
 
 if (!consoleLaunchSettings.SkipCs2Setup)
 {
@@ -108,6 +120,22 @@ app.MapGet("/status", async (IAppStateService appStateService, CancellationToken
 });
 
 app.MapGet("/events", (AppStateService appStateService) => Results.Ok((object?)appStateService.GetRecentEvents()));
+
+if (runtimeOptions.IsIntentCapture)
+{
+    app.MapGet("/timeline", (TimelineCaptureService timeline) => Results.Ok((object?)timeline.GetRecentEntries()));
+
+    app.MapGet("/timeline/episodes", (TimelineCaptureService timeline) => Results.Ok((object?)timeline.GetIntentEpisodes()));
+
+    app.MapPost("/user-actions", async (
+        UserActionRequest request,
+        UserActionService userActions,
+        CancellationToken cancellationToken) =>
+    {
+        var response = await userActions.RecordAsync(request, cancellationToken);
+        return Results.Ok(response);
+    });
+}
 
 app.MapGet("/spotify/status", async (IServiceProvider services, CancellationToken cancellationToken) =>
 {
@@ -229,6 +257,10 @@ app.MapGet("/spotify/callback", async (
 // resolve it, so without eager creation the recent-events ring would stay empty until some
 // other endpoint (or reset) touched the singleton.
 _ = app.Services.GetRequiredService<AppStateService>();
+if (app.Services.GetRequiredService<IOptions<TimelineOptions>>().Value.IsEnabled(runtimeOptions))
+{
+    _ = app.Services.GetRequiredService<TimelineCaptureService>();
+}
 
 app.Run();
 
@@ -319,6 +351,10 @@ static async Task WriteConsoleStartupChecklistAsync(
     var controlProfileService = app.Services.GetRequiredService<IControlProfileService>();
     var smartTrackStartService = app.Services.GetRequiredService<ISmartTrackStartService>();
     var spotifyClient = app.Services.GetRequiredService<ISpotifyClient>();
+    var runtimeOptions = app.Services.GetRequiredService<IOptions<RuntimeOptions>>().Value;
+    var timelineOptions = app.Services.GetRequiredService<IOptions<TimelineOptions>>().Value;
+    var manualActionOptions = app.Services.GetRequiredService<IOptions<ManualMusicActionOptions>>().Value;
+    var keybindOptions = app.Services.GetRequiredService<IOptions<KeybindOptions>>().Value;
 
     Cs2SetupStatus? cs2Status = null;
     if (!consoleLaunchSettings.SkipCs2Setup)
@@ -372,6 +408,7 @@ static async Task WriteConsoleStartupChecklistAsync(
     Console.WriteLine();
     Console.WriteLine("UndefaultIt console startup");
     Console.WriteLine($"- Quick launch mode: {(consoleLaunchSettings.IsQuickLaunch ? "yes" : "no")}");
+    Console.WriteLine($"- Runtime mode: {runtimeOptions.NormalizedMode}");
     Console.WriteLine($"- Spotify mode: {(consoleLaunchSettings.ConfigurationOverrides.TryGetValue("UseMockSpotify", out var useMock) && string.Equals(useMock, "true", StringComparison.OrdinalIgnoreCase) ? "mock" : "real")}");
     Console.WriteLine($"- Spotify credentials: {(consoleLaunchSettings.HasSpotifyCredentials ? "ready" : "missing")}");
     Console.WriteLine($"- Prompted for credentials this run: {(consoleLaunchSettings.PromptedForCredentials ? "yes" : "no")}");
@@ -389,11 +426,15 @@ static async Task WriteConsoleStartupChecklistAsync(
     Console.WriteLine($"- Smart Track Start warmup: {(consoleLaunchSettings.SkipSmartTrackWarmup ? "skipped" : "attempted")}");
     Console.WriteLine($"- Smart Track Start: {(smartTrackStartOptions.Enabled ? "enabled" : "disabled")}");
     Console.WriteLine($"- Smart Track Start file: {smartTrackStartService.FilePath}");
+    Console.WriteLine($"- Intent timeline: {(timelineOptions.IsEnabled(runtimeOptions) ? "enabled" : "disabled")}");
+    Console.WriteLine($"- Manual intent actions: {(manualActionOptions.IsEnabled(runtimeOptions) && runtimeOptions.IsIntentCapture ? "enabled" : "disabled")}");
+    Console.WriteLine($"- Intent hotkeys: {(keybindOptions.IsEnabled(runtimeOptions) && runtimeOptions.IsIntentCapture ? "enabled" : "disabled")}");
     Console.WriteLine($"- Spotify authenticated: {(spotifyAuthenticated ? "yes" : "no")}");
     Console.WriteLine("- Spotify playback control requires Premium and an active playback device.");
     Console.WriteLine("- Use --reset-spotify-secrets to overwrite the saved secrets without printing them.");
     Console.WriteLine("- Edit control-profiles.json for pause/resume/duck behavior.");
     Console.WriteLine("- Edit smart-track-starts.json to configure optional non-zero track starts for spotify.profile playback.");
+    Console.WriteLine("- Use --intent-capture to enable tester-only /timeline, /timeline/episodes, /user-actions, and hotkeys.");
     Console.WriteLine("- Open /spotify/status, /setup/cs2/status, or /control-profiles for diagnostics.");
     Console.WriteLine();
 }

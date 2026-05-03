@@ -43,6 +43,25 @@ public sealed class RulesEngine : IRulesEngine
         GameSnapshot snapshot,
         CancellationToken cancellationToken = default)
     {
+        var events = Detect(snapshot);
+        await ExecuteActionsAsync(events, cancellationToken).ConfigureAwait(false);
+        return events;
+    }
+
+    public Task<IReadOnlyList<NormalizedEvent>> DetectAsync(
+        GameSnapshot snapshot,
+        CancellationToken cancellationToken = default)
+    {
+        if (snapshot is null)
+        {
+            throw new ArgumentNullException(nameof(snapshot));
+        }
+
+        return Task.FromResult(Detect(snapshot));
+    }
+
+    private IReadOnlyList<NormalizedEvent> Detect(GameSnapshot snapshot)
+    {
         if (snapshot is null)
         {
             throw new ArgumentNullException(nameof(snapshot));
@@ -52,7 +71,13 @@ public sealed class RulesEngine : IRulesEngine
         var diff = _differ.Compute(previous, snapshot);
         var events = _detector.Detect(diff);
         _snapshotStore.Save(snapshot);
+        return events;
+    }
 
+    private async Task ExecuteActionsAsync(
+        IReadOnlyList<NormalizedEvent> events,
+        CancellationToken cancellationToken)
+    {
         foreach (var normalizedEvent in events)
         {
             if (!_actionMap.TryGetValue(normalizedEvent.EventKey, out var actionKeys))
@@ -68,8 +93,6 @@ public sealed class RulesEngine : IRulesEngine
                 }
             }
         }
-
-        return events;
     }
 
     public void Reset()

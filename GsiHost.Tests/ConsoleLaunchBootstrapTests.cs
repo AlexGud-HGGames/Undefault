@@ -181,6 +181,28 @@ public sealed class ConsoleLaunchBootstrapTests
     }
 
     [Fact]
+    public void Prepare_RuntimeModeFlagsOverrideConfiguredMode()
+    {
+        RunWithoutSpotifyEnvVars(() =>
+        {
+            var configuration = BuildConfiguration(new Dictionary<string, string?>
+            {
+                ["Gsi:Url"] = "http://127.0.0.1:5292",
+                ["Runtime:Mode"] = "scenario_playback"
+            });
+
+            var settings = ConsoleLaunchBootstrap.Prepare(
+                configuration,
+                new[] { "--intent-capture" },
+                isInteractiveConsole: false,
+                new FakeConsoleCredentialPrompter(),
+                new FakeSpotifySecretStore());
+
+            settings.ConfigurationOverrides["Runtime:Mode"].Should().Be("intent_capture");
+        });
+    }
+
+    [Fact]
     public async Task MockSpotifyClient_ReportsUnauthenticatedState()
     {
         var client = new MockSpotifyClient(NullLogger<MockSpotifyClient>.Instance);

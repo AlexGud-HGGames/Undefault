@@ -12,7 +12,7 @@ Running both `RulesEngine` (`ActionMap` → `IEventAction`) and a new **music se
 
 GSI ticks now cross a title adapter before legacy rule evaluation:
 
-`GsiProcessingService` -> `IGameAdapter<GsiPayloadDto>` -> `AdapterObservation`.
+`GsiProcessingService` → `IGameAdapter<GsiPayloadDto>` → `AdapterObservation`.
 
 `AdapterObservation.Raw` preserves the existing `GameSnapshot` path for `RulesEngine`.
 `AdapterObservation.Clock`, `NeutralContext`, `SafetyFacts`, and title domain events are the handoff for Phase A facade work. The facade should consume those adapter outputs instead of re-parsing CS2 DTOs or reading CS2-only module strings directly.

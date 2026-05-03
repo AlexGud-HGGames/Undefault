@@ -91,7 +91,7 @@ The backend uses several distinct configuration surfaces rather than one large s
 
 | File / surface | Role |
 |---|---|
-| `GsiHost/appsettings.json` | host runtime settings, detector options, action map, Spotify client options, Smart Track Start toggle |
+| `GsiHost/appsettings.json` | host runtime mode/settings, detector options, action map, Spotify client options, Smart Track Start toggle |
 | `GsiHost/control-profiles.json` | console-first music control rules like `pause`, `resume`, `duck`, `restore_volume` |
 | `profiles.json` in host content root | legacy track-routing profiles mapping `eventKey -> Spotify URI[]` |
 | `GsiHost/smart-track-starts.json` | optional Smart Track Start metadata keyed by Spotify track URI or track id |
@@ -109,10 +109,19 @@ Current top-level sections:
 - `Spotify`
 - `Gsi`
 - `UseMockSpotify`
+- `Runtime`
 - `EventDetector`
 - `SpotifyVolumeDuck`
 - `SmartTrackStart`
+- `Timeline`
+- `ManualMusicActions`
+- `Keybinds`
 - `RulesEngine`
+
+`Runtime:Mode` chooses the product path:
+
+- `scenario_playback` is the normal user mode and runs automatic GSI-driven scenario actions.
+- `intent_capture` is tester/product-owner mode and exposes timeline/manual-action tooling while skipping automatic scenario action dispatch.
 
 `AppSettingsConfigurationService` persists the editable system config surface for:
 
@@ -195,8 +204,12 @@ The backend is currently a Minimal API host with these main routes:
 |---|---|---|
 | `GET` | `/` | short host identification string |
 | `POST` | `/gsi` | receive CS2 GSI payloads |
+| `POST` | `/gsi/reset` | reset detector, snapshot store, recent events, and the timeline session when capture is enabled |
 | `GET` | `/status` | current app/runtime status |
 | `GET` | `/events` | recent normalized events |
+| `GET` | `/timeline` | intent-capture only: recent unified timeline (GSI + manual actions) |
+| `GET` | `/timeline/episodes` | intent-capture only: manual-intent episodes with before/after windows |
+| `POST` | `/user-actions` | intent-capture only: record manual music intent; apply manual command mapping |
 | `GET` | `/spotify/status` | Spotify auth/runtime diagnostics |
 | `GET` | `/config` | read editable system config |
 | `PUT` | `/config` | save editable system config |
@@ -209,6 +222,8 @@ The backend is currently a Minimal API host with these main routes:
 | `GET` | `/spotify/authorize` | produce an authorization URL in real mode |
 | `GET` | `/callback` | OAuth callback endpoint |
 | `GET` | `/spotify/callback` | alternate OAuth callback endpoint |
+
+See [manual-intent-timeline.md](manual-intent-timeline.md) for runtime mode selection, timeline storage, and how manual actions stay separate from `RulesEngine.ActionMap`.
 
 ## GSI Ingestion Pipeline
 
@@ -301,7 +316,9 @@ That execution order matters. If multiple actions are mapped to one event, they 
 
 ## Current Default Runtime Behavior
 
-The default `GsiHost/appsettings.json` routes:
+The default `GsiHost/appsettings.json` uses `Runtime:Mode = scenario_playback`. In that mode, tester-only timeline endpoints, manual action endpoints, and hotkeys are not exposed by default.
+
+The default scenario playback routes:
 
 - `round_start -> spotify.control_profile`
 - `death -> spotify.control_profile`

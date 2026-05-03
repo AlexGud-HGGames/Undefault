@@ -1,8 +1,10 @@
-# Quick Launch Enablement
+# Quick Launch
 
-This guide helps you start the host quickly for local iteration and testing, without waiting for CS2 auto-setup or real Spotify OAuth.
+This guide helps you start `GsiHost` quickly for local iteration. Use `--quick` when you want the backend and endpoints up immediately without CS2 auto-setup or real Spotify OAuth.
 
-## Quick start (mock Spotify + skip optional startup)
+The normal host startup path is Windows-only today because it uses the encrypted Windows secret store for Spotify app credentials. Real Spotify playback control also requires Spotify Premium and an active playback device.
+
+## Fastest Start
 
 From the repository root:
 
@@ -17,7 +19,17 @@ In `--quick` mode, you get:
 - Smart Track warmup skipped by default
 - startup continues even if optional diagnostics fail (warnings are logged to the console)
 
-## Targeted skip flags (keep real Spotify)
+## Runtime mode overrides
+
+The default runtime mode is normal scenario playback. Use intent capture only for tester/product-owner sessions that need timeline entries, manual `/user-actions`, and hotkeys:
+
+```powershell
+dotnet run --project .\GsiHost -- --quick --intent-capture
+```
+
+Use `--scenario-playback` to force the normal mode for a run. In intent capture mode, GSI context and normalized events are captured, but automatic scenario playback actions are skipped so manual intent data stays clean.
+
+## Real Spotify, Faster Startup
 
 Use these when you want real Spotify, but still want faster startup:
 
@@ -35,6 +47,8 @@ You can explicitly control the Spotify client mode:
 
 - `--use-mock-spotify` forces mock mode
 - `--use-real-spotify` forces real OAuth mode and disables the quick-launch defaults
+
+Spotify app credentials can come from `CLIENT_ID` / `CLIENT_SECRET`, the encrypted local store, `appsettings.json`, or the interactive console prompt. Use `--reset-spotify-secrets` to overwrite saved credentials and `--clear-spotify-secrets` to remove them.
 
 ## Failure handling behavior
 

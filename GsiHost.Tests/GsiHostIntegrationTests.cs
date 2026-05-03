@@ -435,19 +435,158 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         observed.Raw.Should().BeEquivalentTo(mapped);
     }
 
+    [Fact]
+    public async Task TesterIntentEndpoints_AreUnavailableInScenarioPlaybackMode()
+    {
+        using var host = CreateTestHost(new FakeSpotifyClient { Authenticated = true });
+
+        var timeline = await host.Client.GetAsync("/timeline");
+        var episodes = await host.Client.GetAsync("/timeline/episodes");
+        var userAction = await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "custom:music_pause", action = "pause" });
+
+        timeline.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        episodes.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        userAction.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        Directory.Exists(Path.Combine(host.TempRoot, "timeline")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task UserActionEndpoint_RecordsIntentWithCurrentGameContext_AndAppliesManualCommandMapping()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 70,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(spotifyClient, appSettingsJson: BuildIntentCaptureAppSettingsJson());
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4000, 100, round: 4, phase: "freezetime"));
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4001, 100, round: 4, phase: "live"));
+        spotifyClient.VolumeCalls.Should().BeEmpty();
+
+        var response = await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "custom:music_pause", action = "pause", detail = "test command" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        spotifyClient.PauseCalls.Should().Be(1);
+
+        var timelineJson = await host.Client.GetStringAsync("/timeline");
+        using var doc = JsonDocument.Parse(timelineJson);
+        var entries = doc.RootElement.EnumerateArray().ToList();
+        entries.Should().HaveCountGreaterThanOrEqualTo(2);
+        entries.Select(e => e.GetProperty("source").GetString()).Should().Contain("gsi");
+
+        var userEntry = entries.Last(e => e.GetProperty("source").GetString() == "user_action");
+        userEntry.GetProperty("eventKey").GetString().Should().Be("custom:music_pause");
+        userEntry.GetProperty("outcome").GetProperty("status").GetString().Should().Be("applied");
+
+        var context = userEntry.GetProperty("gameContext");
+        context.GetProperty("isAlive").GetBoolean().Should().BeTrue();
+        context.GetProperty("health").GetInt32().Should().Be(100);
+        context.GetProperty("round").GetInt32().Should().Be(4);
+        context.GetProperty("roundPhase").GetString().Should().Be("live");
+        context.GetProperty("recentEventKeys").EnumerateArray()
+            .Select(e => e.GetString())
+            .Should()
+            .Contain("round_start");
+
+        entries.Select(e => e.GetProperty("sequence").GetInt64())
+            .Should()
+            .BeInAscendingOrder();
+    }
+
+    [Fact]
+    public async Task UserActionEndpoint_RecordsNoMatchingRuleOutcome()
+    {
+        using var host = CreateTestHost(
+            new FakeSpotifyClient { Authenticated = true },
+            appSettingsJson: BuildIntentCaptureAppSettingsJson());
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4100, 100, round: 5, phase: "live"));
+        var response = await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "custom:not_configured", action = "pause" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadAsStringAsync();
+        using var responseDoc = JsonDocument.Parse(body);
+        responseDoc.RootElement
+            .GetProperty("outcome")
+            .GetProperty("status")
+            .GetString()
+            .Should()
+            .Be("no_matching_rule");
+
+        var timelineJson = await host.Client.GetStringAsync("/timeline");
+        using var timelineDoc = JsonDocument.Parse(timelineJson);
+        timelineDoc.RootElement.EnumerateArray()
+            .Last()
+            .GetProperty("outcome")
+            .GetProperty("status")
+            .GetString()
+            .Should()
+            .Be("no_matching_rule");
+    }
+
+    [Fact]
+    public async Task GsiReset_ClearsTimelineEntries()
+    {
+        using var host = CreateTestHost(
+            new FakeSpotifyClient { Authenticated = true },
+            appSettingsJson: BuildIntentCaptureAppSettingsJson());
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4200, 100, round: 6, phase: "freezetime"));
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4201, 100, round: 6, phase: "live"));
+        await host.Client.PostAsJsonAsync("/user-actions", new { eventKey = "custom:music_pause", action = "pause" });
+
+        var before = await host.Client.GetStringAsync("/timeline");
+        using (var beforeDoc = JsonDocument.Parse(before))
+        {
+            beforeDoc.RootElement.GetArrayLength().Should().BeGreaterThan(0);
+        }
+
+        var resetResponse = await host.Client.PostAsync("/gsi/reset", content: null);
+        resetResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var after = await host.Client.GetStringAsync("/timeline");
+        using var afterDoc = JsonDocument.Parse(after);
+        afterDoc.RootElement.GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task TimelineEpisodes_ExposeManualIntentWindows()
+    {
+        using var host = CreateTestHost(
+            new FakeSpotifyClient { Authenticated = true },
+            appSettingsJson: BuildIntentCaptureAppSettingsJson());
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4300, 100, round: 7, phase: "freezetime"));
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4301, 100, round: 7, phase: "live"));
+        await host.Client.PostAsJsonAsync("/user-actions", new { eventKey = "custom:music_pause", action = "pause" });
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4302, 0, round: 7, phase: "live"));
+
+        var episodesJson = await host.Client.GetStringAsync("/timeline/episodes");
+        using var doc = JsonDocument.Parse(episodesJson);
+        doc.RootElement.GetArrayLength().Should().BeGreaterThanOrEqualTo(1);
+
+        var episode = doc.RootElement.EnumerateArray().First();
+        episode.GetProperty("label").GetProperty("eventKey").GetString().Should().Be("custom:music_pause");
+        episode.GetProperty("before").GetArrayLength().Should().BeGreaterThanOrEqualTo(1);
+        episode.GetProperty("after").GetArrayLength().Should().BeGreaterThanOrEqualTo(1);
+    }
+
     private static object CreatePayload(long timestamp, int health, int? round = null, string? phase = null)
     {
-        return new
-        {
-            provider = new { timestamp },
-            map = new { matchid = "match", round, phase },
-            player = new
-            {
-                steamid = "player",
-                activity = "playing",
-                state = new { health, armor = 0 }
-            }
-        };
+        return CreatePayloadDto(timestamp, health, round, phase);
     }
 
     private static GsiPayloadDto CreatePayloadDto(long timestamp, int health, int? round = null, string? phase = null)
@@ -624,7 +763,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         bool enableSmartTrackStart = false,
         string roundStartAction = "spotify.control_profile",
         string deathAction = "spotify.control_profile",
-        bool allowGsiReset = true)
+        bool allowGsiReset = true,
+        string runtimeMode = "scenario_playback")
     {
         return $$"""
         {
@@ -651,6 +791,9 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             "AllowReset": {{(allowGsiReset ? "true" : "false")}}
           },
           "UseMockSpotify": true,
+          "Runtime": {
+            "Mode": "{{runtimeMode}}"
+          },
           "EventDetector": {
             "EnableRoundStart": true,
             "EnableDeath": true,
@@ -675,6 +818,11 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
           }
         }
         """;
+    }
+
+    private static string BuildIntentCaptureAppSettingsJson()
+    {
+        return BuildAppSettingsJson("http://127.0.0.1:5292", runtimeMode: "intent_capture");
     }
 
     private sealed class NullStepGate : IStepGate
