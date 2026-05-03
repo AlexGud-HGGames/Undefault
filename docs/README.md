@@ -11,6 +11,7 @@ Long-form documentation for UndefaultIt lives in this folder. The [repository RE
 | [CS2 GSI simulator](cs2-simulator.md) | Local console + scenarios library that posts realistic CS2 payloads to `POST /gsi` for development and testing |
 | [Roadmap](roadmap.md) | Product direction and planned work |
 | [Quick launch](quick-launch.md) | Mock/skip-based startup for local testing and failure handling |
+| [Spotify playback policy boundary](spotify-playback-policy-boundary.md) | Product guardrails: local playback control, not synchronized Spotify content or a game soundtrack |
 | [Music safety state](music-safety-state-spec.md) | Authoritative `Unknown` / `Safe` / `Danger` contract, dominance, hysteresis |
 | [Failure safety](failure-safety-spec.md) | Stale GSI, Spotify failures, degraded device, conservative defaults |
 | [Volume composition](volume-composition-spec.md) | Normative merge algebra for transport vs gain vs clamps |

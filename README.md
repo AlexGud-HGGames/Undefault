@@ -193,6 +193,7 @@ Detailed docs are in **[`docs/`](docs/README.md)**:
 
 - [`docs/README.md`](docs/README.md) — documentation index
 - [`docs/backend-architecture.md`](docs/backend-architecture.md) — full current backend pipeline (`RulesEngine`, actions, files, endpoints)
+- [`docs/spotify-playback-policy-boundary.md`](docs/spotify-playback-policy-boundary.md) — product guardrails for Spotify local playback control
 - [`docs/cs2-gsi-events.md`](docs/cs2-gsi-events.md) — CS2 signal surface and future profile ideas
 - [`docs/cs2-simulator.md`](docs/cs2-simulator.md) — local CS2 GSI simulator (scenarios, CLI, event-mapping)
 - [`docs/music-safety-state-spec.md`](docs/music-safety-state-spec.md) — authoritative `Unknown` / `Safe` / `Danger` model
