@@ -30,6 +30,12 @@ Running both `RulesEngine` (`ActionMap` → `IEventAction`) and a new **music se
 
 The manifesto referenced “ScenarioController”; that feature was removed. The migration target is **music safety + session controller**, not YAML scenarios.
 
+## Manual intent timeline (current implementation)
+
+**Manual music actions** (`POST /user-actions`, optional Windows hotkeys) apply `control-profiles.json` by calling `ISpotifyPlaybackControl` directly. They **do not** enqueue `NormalizedEvent` values and **do not** consult `RulesEngine.ActionMap`.
+
+That is intentional for this MVP: one orchestration entry still applies **per GSI evaluation tick** via `RulesEngine`. Manual commands are a separate user-driven path that must not double-fire the same detector-driven actions. When a future `IMusicOrchestrationFacade` exists, manual actions should be folded into that single entry rather than growing parallel Spotify call sites.
+
 ## Checklist before removing legacy actions
 
 - [ ] Golden tests for mixer + safety transitions

@@ -195,8 +195,12 @@ The backend is currently a Minimal API host with these main routes:
 |---|---|---|
 | `GET` | `/` | short host identification string |
 | `POST` | `/gsi` | receive CS2 GSI payloads |
+| `POST` | `/gsi/reset` | reset detector, snapshot store, recent events, and timeline session |
 | `GET` | `/status` | current app/runtime status |
 | `GET` | `/events` | recent normalized events |
+| `GET` | `/timeline` | recent unified timeline (GSI + manual actions) |
+| `GET` | `/timeline/episodes` | manual-intent episodes with before/after windows |
+| `POST` | `/user-actions` | record manual music intent; apply control-profile rule |
 | `GET` | `/spotify/status` | Spotify auth/runtime diagnostics |
 | `GET` | `/config` | read editable system config |
 | `PUT` | `/config` | save editable system config |
@@ -209,6 +213,8 @@ The backend is currently a Minimal API host with these main routes:
 | `GET` | `/spotify/authorize` | produce an authorization URL in real mode |
 | `GET` | `/callback` | OAuth callback endpoint |
 | `GET` | `/spotify/callback` | alternate OAuth callback endpoint |
+
+See [manual-intent-timeline.md](manual-intent-timeline.md) for timeline storage, configuration, and how manual actions relate to `RulesEngine.ActionMap`.
 
 ## GSI Ingestion Pipeline
 
