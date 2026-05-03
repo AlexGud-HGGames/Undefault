@@ -30,6 +30,9 @@ builder.Services.AddSingleton<ISmartTrackStartService, JsonSmartTrackStartServic
 builder.Services.AddSingleton<ITrackPlaybackService, TrackPlaybackService>();
 builder.Services.AddSingleton<IRulesEngine, RulesEngine>();
 builder.Services.AddSingleton<GsiProcessingService>();
+builder.Services.AddSingleton<TimelineCaptureService>();
+builder.Services.AddSingleton<UserActionService>();
+builder.Services.AddHostedService<WindowsHotkeyService>();
 builder.Services.AddSingleton<AppStateService>();
 builder.Services.AddSingleton<IAppStateService>(sp => sp.GetRequiredService<AppStateService>());
 builder.Services.AddSingleton<IGsiResetService, GsiResetService>();
@@ -58,6 +61,12 @@ builder.Services.Configure<SmartTrackStartOptions>(
     builder.Configuration.GetSection("SmartTrackStart"));
 builder.Services.Configure<GsiOptions>(
     builder.Configuration.GetSection(GsiOptions.SectionName));
+builder.Services.Configure<TimelineOptions>(
+    builder.Configuration.GetSection(TimelineOptions.SectionName));
+builder.Services.Configure<ManualMusicActionOptions>(
+    builder.Configuration.GetSection(ManualMusicActionOptions.SectionName));
+builder.Services.Configure<KeybindOptions>(
+    builder.Configuration.GetSection(KeybindOptions.SectionName));
 
 var app = builder.Build();
 
@@ -105,6 +114,19 @@ app.MapGet("/status", async (IAppStateService appStateService, CancellationToken
 });
 
 app.MapGet("/events", (AppStateService appStateService) => Results.Ok((object?)appStateService.GetRecentEvents()));
+
+app.MapGet("/timeline", (TimelineCaptureService timeline) => Results.Ok((object?)timeline.GetRecentEntries()));
+
+app.MapGet("/timeline/episodes", (TimelineCaptureService timeline) => Results.Ok((object?)timeline.GetIntentEpisodes()));
+
+app.MapPost("/user-actions", async (
+    UserActionRequest request,
+    UserActionService userActions,
+    CancellationToken cancellationToken) =>
+{
+    var response = await userActions.RecordAsync(request, cancellationToken);
+    return Results.Ok(response);
+});
 
 app.MapGet("/spotify/status", async (IServiceProvider services, CancellationToken cancellationToken) =>
 {
@@ -226,6 +248,7 @@ app.MapGet("/spotify/callback", async (
 // resolve it, so without eager creation the recent-events ring would stay empty until some
 // other endpoint (or reset) touched the singleton.
 _ = app.Services.GetRequiredService<AppStateService>();
+_ = app.Services.GetRequiredService<TimelineCaptureService>();
 
 app.Run();
 

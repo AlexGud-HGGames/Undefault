@@ -23,6 +23,7 @@ Long-form documentation for UndefaultIt lives in this folder. The [repository RE
 | [Mixer contract & wiring](mixer-contract-and-device-wiring.md) | `IMusicMixer` and Spotify integration boundaries |
 | [Music engine config v1](music-engine-config-schema-v1.md) | Options + observability snapshot schema |
 | [Rules engine migration](rules-engine-migration.md) | Single orchestration entry, no double Spotify side effects |
+| [Manual intent timeline](manual-intent-timeline.md) | Unified GSI + manual music-action capture, episodes, HTTP API, config |
 
 ## In-repo pointers
 
