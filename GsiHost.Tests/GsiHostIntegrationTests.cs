@@ -8,6 +8,10 @@ using Core.Spotify.Models;
 using Cs2Simulator.Runtime;
 using Cs2Simulator.Scenarios.Scenarios;
 using FluentAssertions;
+using GsiHost.Adapters;
+using GsiHost.Dtos;
+using GsiHost.Mapping;
+using GsiHost.Mapping.Modules;
 using GsiHost.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -391,6 +395,20 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         spotifyClient.VolumeCalls.Should().Equal(0, 61);
     }
 
+    [Fact]
+    public void Cs2GameAdapter_PreservesGsiSnapshotMapperOutput()
+    {
+        var mapper = CreateSnapshotMapper();
+        var adapter = new Cs2GameAdapter(mapper);
+        var payload = CreatePayloadDto(1200, 100, round: 9, phase: "live");
+        var receivedAt = DateTimeOffset.UnixEpoch.AddSeconds(1200);
+
+        var mapped = mapper.Map(payload, receivedAt);
+        var observed = adapter.Adapt(payload, receivedAt);
+
+        observed.Raw.Should().BeEquivalentTo(mapped);
+    }
+
     private static object CreatePayload(long timestamp, int health, int? round = null, string? phase = null)
     {
         return new
@@ -404,6 +422,37 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
                 state = new { health, armor = 0 }
             }
         };
+    }
+
+    private static GsiPayloadDto CreatePayloadDto(long timestamp, int health, int? round = null, string? phase = null)
+    {
+        return new GsiPayloadDto
+        {
+            Provider = new ProviderDto { Timestamp = timestamp },
+            Map = new MapDto
+            {
+                MatchId = "match",
+                Round = round,
+                Phase = phase
+            },
+            Player = new PlayerDto
+            {
+                SteamId = "player",
+                Activity = "playing",
+                State = new PlayerStateDto { Health = health, Armor = 0 }
+            },
+        };
+    }
+
+    private static GsiSnapshotMapper CreateSnapshotMapper()
+    {
+        return new GsiSnapshotMapper(new ISnapshotModuleMapper[]
+        {
+            new RoundModuleMapper(),
+            new VitalsModuleMapper(),
+            new PositionModuleMapper(),
+            new CombatModuleMapper()
+        });
     }
 
     private sealed class FakeSpotifyClient : ISpotifyClient
