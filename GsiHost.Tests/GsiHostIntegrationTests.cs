@@ -521,6 +521,32 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
+    public async Task GsiEndpoint_RoundStart_UsesSingleSpotifySideEffectPath()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 61,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(spotifyClient);
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1100, 100, round: 8, phase: "freezetime"));
+        var response = await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1101, 100, round: 8, phase: "live"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        spotifyClient.PlaybackSideEffectCalls.Should().Be(1);
+        spotifyClient.VolumeCalls.Should().Equal(0);
+        spotifyClient.PauseCalls.Should().Be(0);
+        spotifyClient.ResumeCalls.Should().Be(0);
+        spotifyClient.PlayedUris.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Cs2GameAdapter_PreservesGsiSnapshotMapperOutput()
     {
         var mapper = CreateSnapshotMapper();
@@ -589,6 +615,7 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         public List<int> VolumeCalls { get; } = new();
         public int PauseCalls { get; private set; }
         public int ResumeCalls { get; private set; }
+        public int PlaybackSideEffectCalls => PlayedUris.Count + VolumeCalls.Count + PauseCalls + ResumeCalls;
 
         public Task<PlaybackState?> GetCurrentPlaybackAsync(CancellationToken cancellationToken = default)
         {
