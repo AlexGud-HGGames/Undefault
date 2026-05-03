@@ -8,6 +8,15 @@ Running both `RulesEngine` (`ActionMap` → `IEventAction`) and a new **music se
 
 **Exactly one** orchestration entry applies playback side effects per evaluation tick.
 
+## Adapter boundary (precondition)
+
+GSI ticks now cross a title adapter before legacy rule evaluation:
+
+`GsiProcessingService` -> `IGameAdapter<GsiPayloadDto>` -> `AdapterObservation`.
+
+`AdapterObservation.Raw` preserves the existing `GameSnapshot` path for `RulesEngine`.
+`AdapterObservation.Clock`, `NeutralContext`, `SafetyFacts`, and title domain events are the handoff for Phase A facade work. The facade should consume those adapter outputs instead of re-parsing CS2 DTOs or reading CS2-only module strings directly.
+
 ## Phased approach
 
 ### Phase A — Facade behind existing host
@@ -30,7 +39,15 @@ Running both `RulesEngine` (`ActionMap` → `IEventAction`) and a new **music se
 
 The manifesto referenced “ScenarioController”; that feature was removed. The migration target is **music safety + session controller**, not YAML scenarios.
 
+## Manual intent timeline (current implementation)
+
+**Manual music actions** (`POST /user-actions`, optional Windows hotkeys) apply `control-profiles.json` by calling `ISpotifyPlaybackControl` directly. They **do not** enqueue `NormalizedEvent` values and **do not** consult `RulesEngine.ActionMap`.
+
+That is intentional for this MVP: one orchestration entry still applies **per GSI evaluation tick** via `RulesEngine`. Manual commands are a separate user-driven path that must not double-fire the same detector-driven actions. When a future `IMusicOrchestrationFacade` exists, manual actions should be folded into that single entry rather than growing parallel Spotify call sites.
+
+Risk callout: `UserActionService` and timeline/hotkey intent capture remain separate tester/product-owner tooling today. A future facade must absorb that path before it becomes an automated music controller path; otherwise manual commands and GSI-driven decisions can grow into parallel Spotify writers again.
+
 ## Checklist before removing legacy actions
 
 - [ ] Golden tests for mixer + safety transitions
-- [ ] Integration test: one GSI POST does not double Spotify calls (mock client call count)
+- [ ] Baseline integration test: one GSI `round_start` does not double Spotify calls (mock client call count)
