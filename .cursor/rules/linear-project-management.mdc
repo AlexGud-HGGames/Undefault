@@ -1,0 +1,14 @@
+---
+description: Linear-first project management workflow for Undefault
+alwaysApply: true
+---
+
+# Linear Project Management
+
+- Treat Linear as the source of truth for product scope, issue status, acceptance criteria, blockers, and delegation notes.
+- When the user asks to manage work, prefer updating Linear over writing informal chat-only plans.
+- Do not create implementation tasks from design tasks until the product owner approves the design/proposal.
+- Keep implementation work delegated from specific Linear issues; update issue status before and after delegated work.
+- Use `Todo` for not-started work, `In Progress` for active management or implementation, and `Done` only after acceptance criteria are verified.
+- Add clear acceptance criteria to every task before assigning or delegating it.
+- Do not commit, push, or create PRs unless the user explicitly asks.
