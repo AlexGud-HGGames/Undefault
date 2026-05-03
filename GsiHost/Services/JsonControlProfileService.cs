@@ -102,7 +102,11 @@ public sealed class JsonControlProfileService : IControlProfileService
                     new List<EventControlRule>
                     {
                         new(EventKeys.RoundStart, MusicControlCommands.Duck, 0),
-                        new(EventKeys.Death, MusicControlCommands.RestoreVolume)
+                        new(EventKeys.Death, MusicControlCommands.RestoreVolume),
+                        new("custom:music_mute", MusicControlCommands.Duck, 0),
+                        new("custom:music_pause", MusicControlCommands.Pause),
+                        new("custom:music_resume", MusicControlCommands.Resume),
+                        new("custom:music_restore", MusicControlCommands.RestoreVolume)
                     })
             });
     }

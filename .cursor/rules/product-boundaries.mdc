@@ -1,0 +1,13 @@
+---
+description: Product boundaries for Undefault scenarios, safety, and Spotify control
+alwaysApply: true
+---
+
+# Product Boundaries
+
+- Describe Undefault as local game-state-aware Spotify playback control, not a synchronized soundtrack.
+- Keep CS2 as the first game, but avoid making shared Core/music contracts depend on CS2-only terms when a neutral concept exists.
+- Safety dominates adaptivity: `Danger` must override scenario output, mixer/envelope gain, profile restore commands, and future automated behavior.
+- Avoid double Spotify side effects: one orchestration entry should apply playback changes per GSI evaluation tick.
+- `Hotkeys + Timeline` is tester/product-owner tooling only; it is not client UI, not a scenario engine, and not automatic rule generation.
+- Use timeline/manual intent data to discover candidate scenarios, then create explicit reviewed scenario tasks.

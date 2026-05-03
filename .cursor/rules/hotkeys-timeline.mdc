@@ -1,0 +1,15 @@
+---
+description: Hotkeys + Timeline implementation and documentation boundaries
+globs: GsiHost/**/*.cs, GsiHost.Tests/**/*.cs, Core/**/*.cs, Core.Tests/**/*.cs, docs/**/*.md
+alwaysApply: false
+---
+
+# Hotkeys + Timeline
+
+- Treat manual actions as intent capture for testers/product owner, not end-user client functionality.
+- Manual actions must not create `NormalizedEvent` values and must not route through `RulesEngine.ActionMap`.
+- Timeline entries should preserve source: `gsi` for gameplay events and `user_action` for manual intent.
+- `POST /gsi/reset` is a session boundary: detector/snapshot state, recent events, timeline memory, and JSONL session should reset together.
+- Keep `custom:*` manual event keys explicit in `control-profiles.json`.
+- Disabled manual actions should record a `disabled` outcome and avoid Spotify calls.
+- Add regression coverage for no double-fire between manual action paths and GSI-driven rules.
