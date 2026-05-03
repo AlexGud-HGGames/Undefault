@@ -8,6 +8,10 @@ using Core.Spotify.Models;
 using Cs2Simulator.Runtime;
 using Cs2Simulator.Scenarios.Scenarios;
 using FluentAssertions;
+using GsiHost.Adapters;
+using GsiHost.Dtos;
+using GsiHost.Mapping;
+using GsiHost.Mapping.Modules;
 using GsiHost.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -516,6 +520,46 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         episode.GetProperty("after").GetArrayLength().Should().BeGreaterThanOrEqualTo(1);
     }
 
+    [Fact]
+    public async Task GsiEndpoint_RoundStart_UsesSingleSpotifySideEffectPath()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 61,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(spotifyClient);
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1100, 100, round: 8, phase: "freezetime"));
+        var response = await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1101, 100, round: 8, phase: "live"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        spotifyClient.PlaybackSideEffectCalls.Should().Be(1);
+        spotifyClient.VolumeCalls.Should().Equal(0);
+        spotifyClient.PauseCalls.Should().Be(0);
+        spotifyClient.ResumeCalls.Should().Be(0);
+        spotifyClient.PlayedUris.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Cs2GameAdapter_PreservesGsiSnapshotMapperOutput()
+    {
+        var mapper = CreateSnapshotMapper();
+        var adapter = new Cs2GameAdapter(mapper);
+        var payload = CreatePayloadDto(1200, 100, round: 9, phase: "live");
+        var receivedAt = DateTimeOffset.UnixEpoch.AddSeconds(1200);
+
+        var mapped = mapper.Map(payload, receivedAt);
+        var observed = adapter.Adapt(payload, receivedAt);
+
+        observed.Raw.Should().BeEquivalentTo(mapped);
+    }
+
     private static object CreatePayload(long timestamp, int health, int? round = null, string? phase = null)
     {
         return new
@@ -531,6 +575,37 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         };
     }
 
+    private static GsiPayloadDto CreatePayloadDto(long timestamp, int health, int? round = null, string? phase = null)
+    {
+        return new GsiPayloadDto
+        {
+            Provider = new ProviderDto { Timestamp = timestamp },
+            Map = new MapDto
+            {
+                MatchId = "match",
+                Round = round,
+                Phase = phase
+            },
+            Player = new PlayerDto
+            {
+                SteamId = "player",
+                Activity = "playing",
+                State = new PlayerStateDto { Health = health, Armor = 0 }
+            },
+        };
+    }
+
+    private static GsiSnapshotMapper CreateSnapshotMapper()
+    {
+        return new GsiSnapshotMapper(new ISnapshotModuleMapper[]
+        {
+            new RoundModuleMapper(),
+            new VitalsModuleMapper(),
+            new PositionModuleMapper(),
+            new CombatModuleMapper()
+        });
+    }
+
     private sealed class FakeSpotifyClient : ISpotifyClient
     {
         public bool Authenticated { get; set; }
@@ -540,6 +615,7 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         public List<int> VolumeCalls { get; } = new();
         public int PauseCalls { get; private set; }
         public int ResumeCalls { get; private set; }
+        public int PlaybackSideEffectCalls => PlayedUris.Count + VolumeCalls.Count + PauseCalls + ResumeCalls;
 
         public Task<PlaybackState?> GetCurrentPlaybackAsync(CancellationToken cancellationToken = default)
         {

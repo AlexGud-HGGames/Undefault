@@ -6,6 +6,8 @@ using Core.Rules;
 using Core.Services;
 using Core.Spotify;
 using Core.Stores;
+using Core.Adapters;
+using GsiHost.Adapters;
 using GsiHost.Configuration;
 using GsiHost.Dtos;
 using GsiHost.Mapping;
@@ -17,6 +19,7 @@ var builder = WebApplication.CreateBuilder(args);
 var consoleLaunchSettings = ConsoleLaunchBootstrap.Apply(builder, args);
 
 builder.Services.AddSingleton<GsiSnapshotMapper>();
+builder.Services.AddSingleton<IGameAdapter<GsiPayloadDto>, Cs2GameAdapter>();
 builder.Services.AddSingleton<SnapshotDiffer>();
 builder.Services.AddSingleton<EventDetector>(sp =>
     new EventDetector(sp.GetRequiredService<IOptions<EventDetectorOptions>>().Value));

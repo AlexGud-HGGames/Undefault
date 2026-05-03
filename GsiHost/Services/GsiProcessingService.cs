@@ -1,27 +1,27 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Core.Adapters;
 using Core.Models;
 using Core.Rules;
 using GsiHost.Dtos;
-using GsiHost.Mapping;
 using Microsoft.Extensions.Logging;
 
 namespace GsiHost.Services;
 
 public sealed class GsiProcessingService
 {
-    private readonly GsiSnapshotMapper _mapper;
+    private readonly IGameAdapter<GsiPayloadDto> _adapter;
     private readonly IRulesEngine _rulesEngine;
     private readonly ILogger<GsiProcessingService> _logger;
     private int _hasLoggedConnection;
 
     public GsiProcessingService(
-        GsiSnapshotMapper mapper,
+        IGameAdapter<GsiPayloadDto> adapter,
         IRulesEngine rulesEngine,
         ILogger<GsiProcessingService> logger)
     {
-        _mapper = mapper;
+        _adapter = adapter;
         _rulesEngine = rulesEngine;
         _logger = logger;
     }
@@ -37,10 +37,13 @@ public sealed class GsiProcessingService
             _logger.LogInformation("CS2 GSI connected.");
         }
 
-        var snapshot = _mapper.Map(payload, DateTimeOffset.UtcNow);
-        var events = await _rulesEngine.EvaluateAsync(snapshot, cancellationToken).ConfigureAwait(false);
+        var observation = _adapter.Adapt(payload, DateTimeOffset.UtcNow);
+        var events = await _rulesEngine.EvaluateAsync(observation.Raw, cancellationToken).ConfigureAwait(false);
 
-        Processed?.Invoke(this, new GsiProcessedEventArgs(snapshot, events));
+        Processed?.Invoke(this, new GsiProcessedEventArgs(observation.Raw, events)
+        {
+            Observation = observation
+        });
         return events;
     }
 }
@@ -56,4 +59,6 @@ public sealed class GsiProcessedEventArgs : EventArgs
     public GameSnapshot Snapshot { get; }
 
     public IReadOnlyList<NormalizedEvent> Events { get; }
+
+    internal AdapterObservation? Observation { get; init; }
 }
