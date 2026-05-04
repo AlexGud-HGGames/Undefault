@@ -482,6 +482,39 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
+    public async Task UserActionEndpoint_RejectsNonCustomEventKey_WithInvalidStatus()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 70,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        var response = await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "round_start", action = "duck" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("outcome").GetProperty("status").GetString().Should().Be("invalid");
+
+        spotifyClient.PauseCalls.Should().Be(0);
+        spotifyClient.ResumeCalls.Should().Be(0);
+        spotifyClient.VolumeCalls.Should().BeEmpty();
+        spotifyClient.PlayedUris.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task GsiReset_ClearsTimelineEntries()
     {
         using var host = CreateTestHost(

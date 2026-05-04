@@ -67,6 +67,20 @@ public sealed class UserActionService
             return new UserActionResponse(invalidEntry, invalid);
         }
 
+        if (!eventKey.StartsWith("custom:", StringComparison.OrdinalIgnoreCase))
+        {
+            var invalid = new TimelineCommandOutcome(
+                TimelineOutcomeStatuses.Invalid,
+                Message: "Manual actions are restricted to the 'custom:' namespace.");
+            var invalidEntry = _timeline.RecordUserAction(
+                eventKey,
+                request.Action,
+                request.Detail,
+                invalid);
+
+            return new UserActionResponse(invalidEntry, invalid);
+        }
+
         if (!IsAllowed(eventKey))
         {
             var invalid = new TimelineCommandOutcome(
