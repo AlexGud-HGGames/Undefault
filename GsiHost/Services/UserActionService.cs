@@ -4,6 +4,7 @@ using Core.Models;
 using Core.Spotify;
 using GsiHost.Configuration;
 using GsiHost.Dtos;
+using GsiHost.Tooling.Timeline;
 using Microsoft.Extensions.Options;
 
 namespace GsiHost.Services;

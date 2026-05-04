@@ -1,7 +1,8 @@
 using Core.Models;
 using FluentAssertions;
+using GsiHost.Tooling.Timeline;
 
-namespace Core.Tests;
+namespace GsiHost.Tests;
 
 public sealed class TimelineGameContextTests
 {

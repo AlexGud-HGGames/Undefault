@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Core.Models;
 using GsiHost.Configuration;
+using GsiHost.Tooling.Timeline;
 using Microsoft.Extensions.Options;
 
 namespace GsiHost.Services;

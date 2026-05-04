@@ -1,4 +1,4 @@
-using Core.Models;
+using GsiHost.Tooling.Timeline;
 
 namespace GsiHost.Dtos;
 
