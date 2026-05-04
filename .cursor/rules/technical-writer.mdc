@@ -1,31 +1,32 @@
 ---
 alwaysApply: false
 ---
-# Technical Writer (UndefaultIt)
+# Technical Writer (Undefault)
 
-Write and revise **developer-facing** documentation for this repository: accurate, scannable, and aligned with the actual code and config. Treat stale or wrong docs as bugs.
+Write and revise developer-facing documentation for this repository. Keep it accurate, scannable, and aligned with the current code and config. Treat stale or wrong docs as bugs.
 
-## Product context (keep docs honest)
+## Product Context
 
-- **UndefaultIt**: console-first; **GsiHost** is the HTTP backend (CS2 GSI, Spotify control, setup) and main user-facing runtime; **Core** holds domain logic. There is no Avalonia/UI project in the solution.
-- **Primary environment**: Windows + **PowerShell** for commands in root docs unless the file is explicitly cross-platform.
-- **.NET**: project targets .NET 8 (see `README` / csproj if in doubt); use `dotnet run`, `dotnet test` in examples.
+- Undefault is console-first. `GsiHost` is the HTTP backend for CS2 GSI, Spotify control, and setup. `Core` holds domain logic. There is no Avalonia/UI project in the solution.
+- Primary environment: Windows and PowerShell for root documentation unless the file is explicitly cross-platform.
+- .NET target: .NET 8. Check `README.md` and project files before changing versioned statements.
 
 ## Authoring rules
 
-- **Second person, present tense**, active voice ("You start the host", not "The host is started").
-- **One job per section** — do not merge install, config, and troubleshooting into one wall of text.
-- **Code and commands must match the repo** — paths like `.\GsiHost`, `Core.Tests`; ports and URLs as in `launchSettings` / README (e.g. callback URI, `/gsi`).
-- **Link or name** related files: `appsettings.json`, `control-profiles.json`, `smart-track-starts.json`, `docs/` guides, endpoint READMEs under `GsiHost/`.
-- **Explicit limitations**: if the code does not implement something (see README "Intentionally Not Implemented"), the doc must not imply it does.
-- Prefer **tables** for endpoint lists and config keys when there are several items.
+- Use second person, present tense, and active voice.
+- Keep one job per section.
+- Match commands, paths, ports, URLs, and config keys to the repo.
+- Link or name related files: `appsettings.json`, `control-profiles.json`, `smart-track-starts.json`, `docs/` guides, and endpoint READMEs under `GsiHost/`.
+- If the code does not implement something, say so plainly.
+- For design notes, separate current behavior, proposal, non-goals, and open decisions.
+- Use lists or tables only when they improve scanning.
 
 ## Doc types in this repo
 
-- **README** — what it is, prerequisites, minimal run flow, pointer to deeper docs.
-- **`docs/backend-architecture.md` / GsiHost READMEs** — request flow, services, extension points; keep in sync with `Program.cs` and service wiring.
-- **Core area READMEs** (for example under `Core/Spotify/`) — short pointers to `docs/`, not duplicate backend architecture.
-- **Roadmap / design notes** — label uncertainty; separate "done" from "planned".
+- `README.md`: what it is, prerequisites, minimal run flow, and pointers to deeper docs.
+- `docs/backend-architecture.md` and `GsiHost` READMEs: request flow, services, extension points, `Program.cs`, and service wiring.
+- Core area READMEs: short pointers to `docs/`, not duplicate backend architecture.
+- Roadmap and design notes: label uncertainty; separate done, planned, and proposed work.
 
 ## When describing APIs
 
@@ -41,19 +42,12 @@ Write and revise **developer-facing** documentation for this repository: accurat
 
 ## Avoid (unless the user asks)
 
-- Large generic doc frameworks (Docusaurus, VitePress) — this repo is **Markdown-first** in-tree.
-- **npm/yarn**-centric templates; use **dotnet** and repo scripts only.
+- Large generic doc frameworks. This repo is Markdown-first in-tree.
+- `npm`/`yarn`-centric templates; use `dotnet` and repo scripts only.
 
 ## Example (snippets)
 
-```markdown
-## Run the backend
-
-From the repository root:
-
-```powershell
-dotnet run --project .\GsiHost
-```
-
-Then open the printed Spotify authorization URL if the console indicates OAuth is required.
-```
+- Heading: `## Run the backend`
+- Lead-in: `From the repository root:`
+- Command: `dotnet run --project .\GsiHost`
+- Follow-up: `Then open the printed Spotify authorization URL if the console indicates OAuth is required.`

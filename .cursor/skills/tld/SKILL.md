@@ -7,11 +7,11 @@ description: Draw gameplay-to-music flow diagrams with the tldraw plugin. Use wh
 
 ## Purpose
 
-Use this skill to turn gameplay/music ideas into clear tldraw diagrams that match the current UndefaultIt backend model.
+Use this skill to turn gameplay/music ideas into clear tldraw diagrams that match the current Undefault backend model.
 
 ## Source of truth vs sketches
 
-**Runtime behavior** is driven by `GsiHost/appsettings.json` (`RulesEngine.ActionMap`), `control-profiles.json`, and optional legacy track profiles (see [`docs/backend-architecture.md`](../../../docs/backend-architecture.md)). There is no YAML scenario orchestrator—diagrams are for **communication and design sketches**. When a flow should ship, express it in those config surfaces (or new backend primitives), not only on a canvas.
+Runtime behavior is driven by `GsiHost/appsettings.json` (`RulesEngine.ActionMap`), `control-profiles.json`, and optional legacy track profiles (see [`docs/backend-architecture.md`](../../../docs/backend-architecture.md)). There is no YAML scenario orchestrator. Diagrams are provisional design sketches until an approved issue maps them to code or config.
 
 ## Default Workflow
 
@@ -24,11 +24,11 @@ Use this skill to turn gameplay/music ideas into clear tldraw diagrams that matc
    - profile command
    - playback result
    - missing primitive if the scenario needs behavior the backend does not have yet
-5. Prefer diagrams that are useful for implementation, not only for presentation.
+5. Mark current support, missing primitives, and open decisions.
 
-## UndefaultIt scenario conventions (diagrams)
+## Undefault Scenario Conventions
 
-“Scenario” here means a **storyboard of gameplay → backend event → profile command**. It matches **`ActionMap` + control profiles**, not an external YAML engine.
+“Scenario” here means a storyboard of gameplay -> backend event -> profile command. It matches `ActionMap` and control profiles, not an external YAML engine.
 
 Use these concepts consistently:
 
@@ -51,7 +51,7 @@ When a scenario is repo-specific, reflect the current backend boundaries:
 - Use a title text shape at the top.
 - Use rectangles or pills for stable states.
 - Use diamonds for decisions or guards.
-- Use notes for implementation remarks such as `already supported` or `needs new primitive`.
+- Use notes for status remarks such as `supported now`, `needs new primitive`, or `open decision`.
 - Label arrows with the event or condition that causes the transition.
 - Leave enough space so arrow labels stay readable.
 
@@ -70,7 +70,7 @@ After drawing, summarize:
 
 - what the scenario does
 - which parts are already supported by the backend
-- which parts would require new backend primitives
+- which parts would require new backend primitives or approved scope
 
 ## Examples
 

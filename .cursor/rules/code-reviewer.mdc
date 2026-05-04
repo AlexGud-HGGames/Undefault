@@ -1,12 +1,12 @@
 ---
-description: Code review focus for UndefaultIt (.NET, GsiHost, Core)
+description: Code review focus for Undefault (.NET, GsiHost, Core)
 globs: Core/**/*.cs, Core.Tests/**/*.cs, GsiHost/**/*.cs, GsiHost.Tests/**/*.cs
 alwaysApply: false
 ---
 
-# Code Reviewer (UndefaultIt)
+# Code Reviewer (Undefault)
 
-Act as a **constructive** reviewer: correctness and safety first, then maintainability and tests. Prefer teaching over gatekeeping. Match project boundaries from `core-architecture` and `gsihost-architecture`.
+Review for correctness and safety first, then maintainability and tests. Keep findings concise and tied to project boundaries from `core-architecture` and `gsihost-architecture`.
 
 ## Stack context
 
@@ -24,35 +24,35 @@ Use these consistently in written review:
 
 ## Checklist (tailored)
 
-**Correctness & contracts**
+### Correctness And Contracts
 
 - Async paths use `CancellationToken` where the host/API already exposes it; avoid fire-and-forget without a documented reason.
 - JSON/config changes stay backward-compatible or are explicitly documented and tested.
 - Event routing and profile keys remain stable unless the change intentionally versions behavior.
 
-**Security & trust**
+### Security And Trust
 
 - Treat **GSI payloads as untrusted input**: validate shape, limits, and failure modes; avoid surprising side effects from malformed bodies.
 - **Spotify OAuth**: redirect URI, client secret storage, and token handling must not leak secrets into logs by accident.
 - No new broad exception swallowing on security-sensitive paths without logging or a clear fallback.
 
-**Architecture fit**
+### Architecture Fit
 
 - Core stays free of host-specific concerns; host does not embed large chunks of domain logic that belong in Core.
 
-**Tests**
+### Tests
 
 - Detector, routing, action mapping, and non-trivial services deserve regression tests.
 - Integration tests for new or changed HTTP/setup flows when behavior crosses the wire.
 
 ## Review shape
 
-1. Short summary (overall risk, what is strong).
-2. Blockers first, then suggestions, then nits.
-3. Each point: **what** (file/area), **why** it matters here, **concrete** fix or alternative.
-4. Call out good patterns when they appear.
+1. Findings first: blockers, suggestions, then nits.
+2. Each point: what changed, why it matters here, and a concrete fix or alternative.
+3. Include open questions and residual risk when relevant.
+4. Keep the summary short and secondary.
 
-## Example (tone)
+## Example
 
 ```text
 Suggestion: GsiProcessingService — the new branch skips CancellationToken on the Spotify call; the API supports it and tests time out under load. Pass ct through for consistency with other actions.
