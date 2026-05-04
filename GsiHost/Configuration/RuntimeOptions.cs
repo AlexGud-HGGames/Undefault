@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 namespace GsiHost.Configuration;
 
 public sealed class RuntimeOptions
@@ -9,6 +11,12 @@ public sealed class RuntimeOptions
     public string NormalizedMode => RuntimeModes.Normalize(Mode);
 
     public bool IsIntentCapture => RuntimeModes.IsIntentCapture(Mode);
+
+    public static RuntimeOptions From(IConfiguration configuration)
+    {
+        var mode = configuration.GetSection(SectionName)["Mode"];
+        return new RuntimeOptions { Mode = RuntimeModes.Normalize(mode) };
+    }
 }
 
 public static class RuntimeModes

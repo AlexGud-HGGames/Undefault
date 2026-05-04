@@ -408,7 +408,9 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
                 DeviceId: "device",
                 DeviceName: "Desktop")
         };
-        using var host = CreateTestHost(spotifyClient);
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
 
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4000, 100, round: 4, phase: "freezetime"));
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4001, 100, round: 4, phase: "live"));
@@ -448,7 +450,9 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     [Fact]
     public async Task UserActionEndpoint_RecordsNoMatchingRuleOutcome()
     {
-        using var host = CreateTestHost(new FakeSpotifyClient { Authenticated = true });
+        using var host = CreateTestHost(
+            new FakeSpotifyClient { Authenticated = true },
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
 
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4100, 100, round: 5, phase: "live"));
         var response = await host.Client.PostAsJsonAsync(
@@ -480,7 +484,9 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     [Fact]
     public async Task GsiReset_ClearsTimelineEntries()
     {
-        using var host = CreateTestHost(new FakeSpotifyClient { Authenticated = true });
+        using var host = CreateTestHost(
+            new FakeSpotifyClient { Authenticated = true },
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
 
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4200, 100, round: 6, phase: "freezetime"));
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4201, 100, round: 6, phase: "live"));
@@ -503,7 +509,9 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     [Fact]
     public async Task TimelineEpisodes_ExposeManualIntentWindows()
     {
-        using var host = CreateTestHost(new FakeSpotifyClient { Authenticated = true });
+        using var host = CreateTestHost(
+            new FakeSpotifyClient { Authenticated = true },
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
 
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4300, 100, round: 7, phase: "freezetime"));
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4301, 100, round: 7, phase: "live"));
@@ -558,6 +566,56 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         var observed = adapter.Adapt(payload, receivedAt);
 
         observed.Raw.Should().BeEquivalentTo(mapped);
+    }
+
+    [Fact]
+    public async Task ScenarioPlayback_TimelineEndpoints_AreNotMapped()
+    {
+        using var host = CreateTestHost(new FakeSpotifyClient());
+
+        var timeline = await host.Client.GetAsync("/timeline");
+        var episodes = await host.Client.GetAsync("/timeline/episodes");
+        var userActions = await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "custom:music_pause", action = "pause" });
+
+        timeline.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        episodes.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        userActions.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task IntentCapture_TimelineEndpoint_ReturnsOk()
+    {
+        using var host = CreateTestHost(
+            new FakeSpotifyClient { Authenticated = true },
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        var timeline = await host.Client.GetAsync("/timeline");
+
+        timeline.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public void ScenarioPlayback_DoesNotRegisterWindowsHotkeyHostedService()
+    {
+        using var host = CreateTestHost(new FakeSpotifyClient());
+
+        var hostedServices = host.Factory.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>();
+
+        hostedServices.OfType<WindowsHotkeyService>().Should().BeEmpty();
+    }
+
+    [Fact]
+    public void IntentCapture_RegistersWindowsHotkeyHostedService()
+    {
+        using var host = CreateTestHost(
+            new FakeSpotifyClient(),
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        var hostedServices = host.Factory.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>();
+
+        hostedServices.OfType<WindowsHotkeyService>().Should().HaveCount(1);
     }
 
     private static object CreatePayload(long timestamp, int health, int? round = null, string? phase = null)
@@ -749,7 +807,10 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         bool enableSmartTrackStart = false,
         string roundStartAction = "spotify.control_profile",
         string deathAction = "spotify.control_profile",
-        bool allowGsiReset = true)
+        bool allowGsiReset = true,
+        string runtimeMode = "scenario_playback",
+        bool enableTimeline = false,
+        bool enableManualMusicActions = false)
     {
         return $$"""
         {
@@ -792,6 +853,15 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             "Enabled": {{(enableSmartTrackStart ? "true" : "false")}},
             "PreloadOnStartup": true
           },
+          "Runtime": {
+            "Mode": "{{runtimeMode}}"
+          },
+          "Timeline": {
+            "Enabled": {{(enableTimeline ? "true" : "false")}}
+          },
+          "ManualMusicActions": {
+            "Enabled": {{(enableManualMusicActions ? "true" : "false")}}
+          },
           "RulesEngine": {
             "ActionMap": {
               "round_start": [ "{{roundStartAction}}" ],
@@ -800,6 +870,15 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
           }
         }
         """;
+    }
+
+    private static string BuildIntentCaptureAppSettingsJson(string gsiBaseUrl)
+    {
+        return BuildAppSettingsJson(
+            gsiBaseUrl,
+            runtimeMode: "intent_capture",
+            enableTimeline: true,
+            enableManualMusicActions: true);
     }
 
     private sealed class NullStepGate : IStepGate

@@ -7,6 +7,8 @@ public sealed class KeybindOptions
     public bool Enabled { get; set; }
 
     public List<KeybindBindingOptions> Bindings { get; set; } = new();
+
+    public bool IsEnabled(RuntimeOptions runtime) => Enabled && runtime.IsIntentCapture;
 }
 
 public sealed class KeybindBindingOptions
