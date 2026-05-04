@@ -4,8 +4,10 @@ using System.Threading.Tasks;
 using Core.Adapters;
 using Core.Models;
 using Core.Rules;
+using GsiHost.Configuration;
 using GsiHost.Dtos;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace GsiHost.Services;
 
@@ -13,16 +15,19 @@ public sealed class GsiProcessingService
 {
     private readonly IGameAdapter<GsiPayloadDto> _adapter;
     private readonly IRulesEngine _rulesEngine;
+    private readonly RuntimeOptions _runtime;
     private readonly ILogger<GsiProcessingService> _logger;
     private int _hasLoggedConnection;
 
     public GsiProcessingService(
         IGameAdapter<GsiPayloadDto> adapter,
         IRulesEngine rulesEngine,
+        IOptions<RuntimeOptions> runtime,
         ILogger<GsiProcessingService> logger)
     {
         _adapter = adapter;
         _rulesEngine = rulesEngine;
+        _runtime = runtime.Value;
         _logger = logger;
     }
 
@@ -38,7 +43,9 @@ public sealed class GsiProcessingService
         }
 
         var observation = _adapter.Adapt(payload, DateTimeOffset.UtcNow);
-        var events = await _rulesEngine.EvaluateAsync(observation.Raw, cancellationToken).ConfigureAwait(false);
+        var events = _runtime.IsIntentCapture
+            ? await _rulesEngine.DetectAsync(observation.Raw, cancellationToken).ConfigureAwait(false)
+            : await _rulesEngine.EvaluateAsync(observation.Raw, cancellationToken).ConfigureAwait(false);
 
         Processed?.Invoke(this, new GsiProcessedEventArgs(observation.Raw, events)
         {

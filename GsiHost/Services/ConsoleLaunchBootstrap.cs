@@ -50,6 +50,8 @@ public static class ConsoleLaunchBootstrap
     private const string SkipSmartTrackWarmupArg = "--skip-smart-track-warmup";
     private const string UseMockSpotifyArg = "--use-mock-spotify";
     private const string UseRealSpotifyArg = "--use-real-spotify";
+    private const string IntentCaptureArg = "--intent-capture";
+    private const string ScenarioPlaybackArg = "--scenario-playback";
 
     public static ConsoleLaunchSettings Apply(WebApplicationBuilder builder, string[] args)
     {
@@ -87,6 +89,8 @@ public static class ConsoleLaunchBootstrap
 
         var requestedUseMockSpotify = HasArg(args, UseMockSpotifyArg);
         var requestedUseRealSpotify = HasArg(args, UseRealSpotifyArg);
+        var requestedIntentCapture = HasArg(args, IntentCaptureArg);
+        var requestedScenarioPlayback = HasArg(args, ScenarioPlaybackArg);
         var isQuickLaunch = HasArg(args, QuickLaunchArg) && !requestedUseRealSpotify;
         var skipCs2Setup = isQuickLaunch || HasArg(args, SkipCs2SetupArg);
         var skipSmartTrackWarmup = isQuickLaunch || HasArg(args, SkipSmartTrackWarmupArg);
@@ -167,6 +171,15 @@ public static class ConsoleLaunchBootstrap
             ["Gsi:Url"] = gsiBaseUrl,
             ["Spotify:RedirectUri"] = redirectUri
         };
+
+        if (requestedIntentCapture && !requestedScenarioPlayback)
+        {
+            overrides["Runtime:Mode"] = "intent_capture";
+        }
+        else if (requestedScenarioPlayback)
+        {
+            overrides["Runtime:Mode"] = "scenario_playback";
+        }
 
         if (!useMockSpotify && !string.IsNullOrWhiteSpace(clientId))
         {

@@ -64,6 +64,8 @@ builder.Services.Configure<SmartTrackStartOptions>(
     builder.Configuration.GetSection("SmartTrackStart"));
 builder.Services.Configure<GsiOptions>(
     builder.Configuration.GetSection(GsiOptions.SectionName));
+builder.Services.Configure<RuntimeOptions>(
+    builder.Configuration.GetSection(RuntimeOptions.SectionName));
 builder.Services.Configure<TimelineOptions>(
     builder.Configuration.GetSection(TimelineOptions.SectionName));
 builder.Services.Configure<ManualMusicActionOptions>(
