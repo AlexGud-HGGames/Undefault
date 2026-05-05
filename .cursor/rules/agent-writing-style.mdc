@@ -1,0 +1,12 @@
+---
+description: Agent writing style for Undefault
+alwaysApply: true
+---
+
+# Agent Writing Style
+
+- Keep wording clear, dry, and provisional.
+- Separate observed current behavior from proposed or future behavior.
+- State assumptions, gaps, and remaining risk explicitly.
+- Avoid promotional language, metaphors, and claims that are not backed by code, docs, or Linear scope.
+- Do not describe design notes as implementation work until the product owner approves the scope.

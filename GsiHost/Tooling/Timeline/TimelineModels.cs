@@ -1,4 +1,6 @@
-namespace Core.Models;
+using Core.Models;
+
+namespace GsiHost.Tooling.Timeline;
 
 public static class TimelineSources
 {

@@ -4,6 +4,7 @@ using Core.Models;
 using Core.Spotify;
 using GsiHost.Configuration;
 using GsiHost.Dtos;
+using GsiHost.Tooling.Timeline;
 using Microsoft.Extensions.Options;
 
 namespace GsiHost.Services;
@@ -59,6 +60,20 @@ public sealed class UserActionService
                 Message: "Event key is required.");
             var invalidEntry = _timeline.RecordUserAction(
                 string.Empty,
+                request.Action,
+                request.Detail,
+                invalid);
+
+            return new UserActionResponse(invalidEntry, invalid);
+        }
+
+        if (!eventKey.StartsWith("custom:", StringComparison.OrdinalIgnoreCase))
+        {
+            var invalid = new TimelineCommandOutcome(
+                TimelineOutcomeStatuses.Invalid,
+                Message: "Manual actions are restricted to the 'custom:' namespace.");
+            var invalidEntry = _timeline.RecordUserAction(
+                eventKey,
                 request.Action,
                 request.Detail,
                 invalid);

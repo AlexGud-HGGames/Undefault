@@ -9,5 +9,10 @@ public interface IRulesEngine
     Task<IReadOnlyList<NormalizedEvent>> EvaluateAsync(
         GameSnapshot snapshot,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<NormalizedEvent>> DetectAsync(
+        GameSnapshot snapshot,
+        CancellationToken cancellationToken = default);
+
     void Reset();
 }

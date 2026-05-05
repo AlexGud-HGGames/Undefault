@@ -17,6 +17,7 @@ using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 var consoleLaunchSettings = ConsoleLaunchBootstrap.Apply(builder, args);
+var resolvedRuntime = RuntimeOptions.From(builder.Configuration);
 
 builder.Services.AddSingleton<GsiSnapshotMapper>();
 builder.Services.AddSingleton<IGameAdapter<GsiPayloadDto>, Cs2GameAdapter>();
@@ -35,7 +36,10 @@ builder.Services.AddSingleton<IRulesEngine, RulesEngine>();
 builder.Services.AddSingleton<GsiProcessingService>();
 builder.Services.AddSingleton<TimelineCaptureService>();
 builder.Services.AddSingleton<UserActionService>();
-builder.Services.AddHostedService<WindowsHotkeyService>();
+if (resolvedRuntime.IsIntentCapture)
+{
+    builder.Services.AddHostedService<WindowsHotkeyService>();
+}
 builder.Services.AddSingleton<AppStateService>();
 builder.Services.AddSingleton<IAppStateService>(sp => sp.GetRequiredService<AppStateService>());
 builder.Services.AddSingleton<IGsiResetService, GsiResetService>();
@@ -64,6 +68,8 @@ builder.Services.Configure<SmartTrackStartOptions>(
     builder.Configuration.GetSection("SmartTrackStart"));
 builder.Services.Configure<GsiOptions>(
     builder.Configuration.GetSection(GsiOptions.SectionName));
+builder.Services.Configure<RuntimeOptions>(
+    builder.Configuration.GetSection(RuntimeOptions.SectionName));
 builder.Services.Configure<TimelineOptions>(
     builder.Configuration.GetSection(TimelineOptions.SectionName));
 builder.Services.Configure<ManualMusicActionOptions>(
@@ -118,18 +124,21 @@ app.MapGet("/status", async (IAppStateService appStateService, CancellationToken
 
 app.MapGet("/events", (AppStateService appStateService) => Results.Ok((object?)appStateService.GetRecentEvents()));
 
-app.MapGet("/timeline", (TimelineCaptureService timeline) => Results.Ok((object?)timeline.GetRecentEntries()));
-
-app.MapGet("/timeline/episodes", (TimelineCaptureService timeline) => Results.Ok((object?)timeline.GetIntentEpisodes()));
-
-app.MapPost("/user-actions", async (
-    UserActionRequest request,
-    UserActionService userActions,
-    CancellationToken cancellationToken) =>
+if (resolvedRuntime.IsIntentCapture)
 {
-    var response = await userActions.RecordAsync(request, cancellationToken);
-    return Results.Ok(response);
-});
+    app.MapGet("/timeline", (TimelineCaptureService timeline) => Results.Ok((object?)timeline.GetRecentEntries()));
+
+    app.MapGet("/timeline/episodes", (TimelineCaptureService timeline) => Results.Ok((object?)timeline.GetIntentEpisodes()));
+
+    app.MapPost("/user-actions", async (
+        UserActionRequest request,
+        UserActionService userActions,
+        CancellationToken cancellationToken) =>
+    {
+        var response = await userActions.RecordAsync(request, cancellationToken);
+        return Results.Ok(response);
+    });
+}
 
 app.MapGet("/spotify/status", async (IServiceProvider services, CancellationToken cancellationToken) =>
 {
