@@ -33,6 +33,12 @@ public sealed class ShadowMusicOrchestrationFacadeTests
         snapshot.MixerChannelContributions.Should().NotBeNull();
         snapshot.MixerChannelContributions!.Should().ContainKey("adaptive").WhoseValue.Should().Be("100%");
         snapshot.MixerChannelContributions.Should().ContainKey("floor").WhoseValue.Should().Be("30%");
+
+        snapshot.LastMusicIntent.Should().NotBeNull();
+        snapshot.LastMusicIntent!.TransportIntent.Should().Be(TransportIntentNeutral.NoChange);
+        snapshot.LastMusicIntent.FloorVolumePercent.Should().BeNull();
+        snapshot.LastMusicIntent.CeilingVolumePercent.Should().BeNull();
+        snapshot.LastMusicIntent.Reason.Should().Be("shadow:live-and-alive");
     }
 
     [Fact]
@@ -49,6 +55,11 @@ public sealed class ShadowMusicOrchestrationFacadeTests
         snapshot.DesiredSafetyState.Should().Be(MusicSafetyState.Danger);
         snapshot.LastSafetyTransitionReason.Should().Be("shadow:player-dead");
         snapshot.LastMergedVolumePercent.Should().Be(0);
+
+        snapshot.LastMusicIntent.Should().NotBeNull();
+        snapshot.LastMusicIntent!.TransportIntent.Should().Be(TransportIntentNeutral.PreferSilence);
+        snapshot.LastMusicIntent.FloorVolumePercent.Should().Be(0);
+        snapshot.LastMusicIntent.CeilingVolumePercent.Should().Be(0);
     }
 
     [Fact]
@@ -65,6 +76,11 @@ public sealed class ShadowMusicOrchestrationFacadeTests
         snapshot.DesiredSafetyState.Should().Be(MusicSafetyState.Unknown);
         snapshot.LastSafetyTransitionReason.Should().Be("shadow:non-live-or-unknown-phase");
         snapshot.LastMergedVolumePercent.Should().Be(30);
+
+        snapshot.LastMusicIntent.Should().NotBeNull();
+        snapshot.LastMusicIntent!.TransportIntent.Should().Be(TransportIntentNeutral.NoChange);
+        snapshot.LastMusicIntent.CeilingVolumePercent.Should().Be(30);
+        snapshot.LastMusicIntent.FloorVolumePercent.Should().BeNull();
     }
 
     [Fact]
@@ -81,6 +97,12 @@ public sealed class ShadowMusicOrchestrationFacadeTests
         snapshot.DesiredSafetyState.Should().Be(MusicSafetyState.Danger);
         snapshot.LastSafetyTransitionReason.Should().Be(ShadowMusicOrchestrationFacade.DeadFallbackReason);
         snapshot.LastMergedVolumePercent.Should().Be(0);
+
+        snapshot.LastMusicIntent.Should().NotBeNull();
+        snapshot.LastMusicIntent!.TransportIntent.Should().Be(TransportIntentNeutral.PreferSilence);
+        snapshot.LastMusicIntent.FloorVolumePercent.Should().Be(0);
+        snapshot.LastMusicIntent.CeilingVolumePercent.Should().Be(0);
+        snapshot.LastMusicIntent.Reason.Should().Be(ShadowMusicOrchestrationFacade.DeadFallbackReason);
     }
 
     [Fact]

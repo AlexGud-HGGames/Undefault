@@ -58,6 +58,25 @@ If `MusicSafetyState = Danger`, skip this pipeline for audibility: apply suppres
 
 See [music-engine-config-schema-v1.md](music-engine-config-schema-v1.md). Floor is **not** a safety mechanism: in `Danger`, floor may be **disallowed** so “playing at 5%” cannot violate suppression.
 
+## Intent merge (`MusicIntent`)
+
+Scenarios emit one or more `MusicIntent` per tick (`Core/Music/MusicIntent.cs`). Before the gain pipeline above runs, those intents are merged into a single resolved intent via `MusicIntent.Merge(intents, safetyState)`. The merge has fixed precedence; alternative orderings are not allowed.
+
+| Field | Merge rule |
+|-------|------------|
+| `TransportIntent` | Highest rank wins: `PreferSilence` > `PreferPause` > `PreferResume` > `NoChange`. |
+| `FloorVolumePercent` | `max` of proposed floors (most "audible insistence" wins). `null` if no intent specifies one. |
+| `CeilingVolumePercent` | `min` of proposed ceilings (most restrictive cap wins). `null` if no intent specifies one. |
+| floor vs ceiling clash | If merged `floor > merged ceiling`, floor is clamped down to ceiling. Ceiling always wins. |
+| `GainBias` | Sum of contributions, clamped to `[-1, +1]` to bound dynamic range. |
+| `CooldownHint` | `max` (longest hold wins). |
+| `Reason` | `;`-joined non-empty reasons, deduplicated, in input order. |
+| `SafetyOverrideAllowed` | `AND` across intents (most conservative). |
+
+`Danger` overrides everything: `TransportIntent = PreferSilence`, `Floor = 0`, `Ceiling = 0`, `GainBias = null`, `SafetyOverrideAllowed = false`. Reason is prefixed with `danger`. `SafetyOverrideAllowed = true` is **ignored** under `Danger` — the field exists for non-safety relaxations only; safety always wins.
+
+The merged intent then feeds the gain pipeline above: `Floor`/`Ceiling` from the intent become the policy clamps, `TransportIntent.PreferSilence` is treated as suppression (audible volume = 0), and `GainBias` is one more `g` in the product.
+
 ## Golden tests
 
 Golden vectors: fixed `(B, g…, safety, transport)` → expected `(effectiveVolume, transportCommand)`. Tests must not invent alternate algebra.

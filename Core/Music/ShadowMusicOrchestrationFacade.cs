@@ -26,7 +26,8 @@ public sealed class ShadowMusicOrchestrationFacade : IMusicOrchestrationFacade
             CeilingVolumePercent: DefaultCeilingVolumePercent,
             ForbidFloorInDanger: DefaultForbidFloorInDanger);
 
-        var predictedVolume = PredictMergedVolumePercent(state);
+        var intent = BuildShadowIntent(state, reason);
+        var predictedVolume = PredictMergedVolumePercent(intent);
 
         var contributions = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -41,6 +42,7 @@ public sealed class ShadowMusicOrchestrationFacade : IMusicOrchestrationFacade
             LastSafetyTransitionReason = reason,
             Clock = observation.Clock,
             MixerChannelContributions = contributions,
+            LastMusicIntent = intent,
             LastMergedVolumePercent = predictedVolume,
             LastDeviceCommands = null,
             DeviceDegraded = false,
@@ -77,14 +79,45 @@ public sealed class ShadowMusicOrchestrationFacade : IMusicOrchestrationFacade
             : $"{baseReason};stale:{safety.Reason}";
     }
 
-    private static int PredictMergedVolumePercent(MusicSafetyState state)
+    // Translate the resolved shadow safety state into a MusicIntent that, when run through
+    // PredictMergedVolumePercent, reproduces the legacy baseline volumes:
+    //   Safe    -> 100 (no constraints)
+    //   Unknown -> 30  (conservative ceiling)
+    //   Danger  -> 0   (PreferSilence + floor/ceiling pinned to 0)
+    // Floor/ceiling semantics here mirror docs/volume-composition-spec.md: ceiling is the
+    // upper cap; in Danger, floor is forbidden so we pin both to 0.
+    private static MusicIntent BuildShadowIntent(MusicSafetyState state, string reason)
     {
         return state switch
         {
-            MusicSafetyState.Danger => DefaultForbidFloorInDanger ? 0 : DefaultFloorVolumePercent,
-            MusicSafetyState.Unknown => Math.Clamp(DefaultFloorVolumePercent, 0, DefaultCeilingVolumePercent),
-            MusicSafetyState.Safe => DefaultBaseVolumePercent,
-            _ => DefaultFloorVolumePercent,
+            MusicSafetyState.Danger => MusicIntent.Create(
+                transportIntent: TransportIntentNeutral.PreferSilence,
+                floorVolumePercent: 0,
+                ceilingVolumePercent: 0,
+                reason: reason),
+            MusicSafetyState.Unknown => MusicIntent.Create(
+                ceilingVolumePercent: DefaultFloorVolumePercent,
+                reason: reason),
+            _ => MusicIntent.Create(reason: reason),
         };
+    }
+
+    private static int PredictMergedVolumePercent(MusicIntent intent)
+    {
+        if (intent.TransportIntent == TransportIntentNeutral.PreferSilence)
+        {
+            return 0;
+        }
+
+        var volume = DefaultBaseVolumePercent;
+        if (intent.FloorVolumePercent.HasValue)
+        {
+            volume = Math.Max(volume, intent.FloorVolumePercent.Value);
+        }
+        if (intent.CeilingVolumePercent.HasValue)
+        {
+            volume = Math.Min(volume, intent.CeilingVolumePercent.Value);
+        }
+        return volume;
     }
 }

@@ -15,6 +15,11 @@ public sealed class MusicEngineDebugSnapshot
 
     public IReadOnlyDictionary<string, string>? MixerChannelContributions { get; init; }
 
+    /// <summary>
+    /// Neutral intent the orchestration facade would emit this tick. Observe-only in shadow mode.
+    /// </summary>
+    public MusicIntent? LastMusicIntent { get; init; }
+
     public int? LastMergedVolumePercent { get; init; }
 
     public IReadOnlyList<DeviceCommandLogEntry>? LastDeviceCommands { get; init; }
