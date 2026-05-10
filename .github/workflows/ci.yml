@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build and Test
+    # windows-latest: tests exercise Windows-only paths (CS2 cfg detection,
+    # WindowsHotkeyService, WindowsProtectedSpotifySecretStore / DPAPI).
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Single 8.0.x SDK channel per docs/dotnet-tfm-decision.md
+      # (UND-30 + UND-46, commit 09c245d). No 9.0.x channel.
+      # NuGet caching omitted: no packages.lock.json exists in the repo,
+      # which is what setup-dotnet's cache: true keys against by default.
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore UndefaultIt.sln
+
+      - name: Build (Release, no restore)
+        run: dotnet build UndefaultIt.sln --no-restore -c Release
+
+      - name: Test (Release, no build)
+        run: dotnet test UndefaultIt.sln --no-build -c Release --logger "trx" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.run_id }}
+          path: TestResults
+          if-no-files-found: warn
+          retention-days: 14

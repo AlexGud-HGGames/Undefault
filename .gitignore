@@ -192,3 +192,6 @@ $RECYCLE.BIN/
 appsettings.Development.json
 appsettings.Local.json
 *.secrets.json
+
+# Test runner output (CI uploads this as a workflow artifact)
+TestResults/

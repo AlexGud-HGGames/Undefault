@@ -602,6 +602,11 @@ Current backend tests focus on:
 - Spotify OAuth callback behavior
 - console bootstrap behavior
 
+Build and test run automatically on every pull request and push to `main` via
+the GitHub Actions workflow at [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
+See [`docs/ci.md`](ci.md) for the SDK pin, runner choice, and where to find
+failed-test logs.
+
 ## Known Boundaries
 
 The following are intentionally not solved yet:

@@ -1,5 +1,7 @@
 # UndefaultIt
 
+[![CI](https://github.com/AlexGud-HGGames/Undefault/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AlexGud-HGGames/Undefault/actions/workflows/ci.yml)
+
 UndefaultIt is a Windows-first, console-first local backend for gameplay-driven Spotify control. CS2 Game State Integration posts to `**GsiHost**`, the host turns payload changes into normalized events, and configured actions control Spotify around gameplay moments.
 
 There is no separate desktop UI in this repository. The console checklist, JSON config files, and local HTTP API are the product surface for now.
@@ -81,8 +83,7 @@ For the default console-first music path, you map normalized events (for example
 ## Prerequisites
 
 - Windows for the normal host startup path
-- .NET 8 SDK for the app projects (`Core`, `GsiHost`)
-- .NET 9 SDK if you want to run the full test solution (`Core.Tests` targets `net9.0`)
+- .NET 8 SDK for the full solution (all projects, including tests, target `net8.0`)
 - CS2 installed locally if you want to use the real GSI flow
 - Spotify app credentials only if you want real Spotify mode
 - Spotify Premium and an active playback device for real pause, resume, play, and volume commands

@@ -26,6 +26,8 @@ Long-form documentation for UndefaultIt lives in this folder. The [repository RE
 | [Music engine config v1](music-engine-config-schema-v1.md) | Options + observability snapshot schema |
 | [Rules engine migration](rules-engine-migration.md) | Single orchestration entry, no double Spotify side effects |
 | [Manual intent timeline](manual-intent-timeline.md) | Unified GSI + manual music-action capture, episodes, HTTP API, config |
+| [Continuous integration](ci.md) | GitHub Actions build/test workflow: triggers, runner choice, SDK pin, where to find failed-test logs |
+| [Release pipeline design](release-pipeline-design.md) | UND-31 design: artifact shape, delivery channel, versioning, signing timing, secret-handling boundary |
 
 ## In-repo pointers
 
