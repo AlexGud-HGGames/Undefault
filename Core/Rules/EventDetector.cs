@@ -1,6 +1,6 @@
-using System;
-using Core.Diff;
+using Core.Adapters;
 using Core.Models;
+using Core.Music;
 
 namespace Core.Rules;
 
@@ -19,18 +19,16 @@ public sealed class EventDetector
         _options = options ?? new EventDetectorOptions();
     }
 
-    public IReadOnlyList<NormalizedEvent> Detect(SnapshotDiff diff)
+    public IReadOnlyList<NormalizedEvent> Detect(NeutralDetectorContext context)
     {
-        if (diff is null)
-        {
-            throw new ArgumentNullException(nameof(diff));
-        }
+        ArgumentNullException.ThrowIfNull(context);
 
         var events = new List<NormalizedEvent>();
-        var snapshot = diff.Current;
-        var timestamp = snapshot.Timestamp;
+        var current = context.Current;
+        var snapshot = current.Raw;
+        var timestamp = current.Clock.WallTimeUtc;
 
-        if (diff.IsFirstSnapshot)
+        if (context.IsFirstObservation)
         {
             _lastActivityAt = timestamp;
             _combatDebounceStartedAt = null;
@@ -38,23 +36,23 @@ public sealed class EventDetector
             return events;
         }
 
-        if (diff.Activity.HasActivity)
+        if (context.Activity.HasActivity)
         {
             _lastActivityAt = timestamp;
         }
 
-        if (_options.EnableRoundStart && IsRoundStart(diff))
+        if (_options.EnableRoundStart && IsRoundStart(context))
         {
-            events.Add(NormalizedEvent.RoundStart(snapshot, BuildRoundStartDetail(snapshot)));
+            events.Add(NormalizedEvent.RoundStart(snapshot, BuildRoundStartDetail(current.Clock)));
         }
 
-        if (_options.EnableDeath && IsDeath(diff) && IsPastCooldown(_lastDeathAt, timestamp, _options.DeathCooldown))
+        if (_options.EnableDeath && IsDeath(context) && IsPastCooldown(_lastDeathAt, timestamp, _options.DeathCooldown))
         {
             events.Add(NormalizedEvent.Death(snapshot));
             _lastDeathAt = timestamp;
         }
 
-        if (_options.EnableCombat && IsCombatCondition(diff, snapshot))
+        if (_options.EnableCombat && IsCombatCondition(context))
         {
             _combatDebounceStartedAt ??= timestamp;
 
@@ -71,7 +69,7 @@ public sealed class EventDetector
             _combatDebounceStartedAt = null;
         }
 
-        if (_options.EnableIdle && IsIdleCondition(diff, snapshot))
+        if (_options.EnableIdle && IsIdleCondition(context))
         {
             _idleDebounceStartedAt ??= timestamp;
 
@@ -102,59 +100,60 @@ public sealed class EventDetector
         _lastActivityAt = null;
     }
 
-    private bool IsDeath(SnapshotDiff diff)
+    private static bool IsDeath(NeutralDetectorContext context)
     {
-        return diff.Activity.PreviousIsAlive && !diff.Activity.CurrentIsAlive;
+        var prev = context.Previous?.Neutral.IsAlive;
+        var curr = context.Current.Neutral.IsAlive;
+        return prev == true && curr == false;
     }
 
-    private bool IsRoundStart(SnapshotDiff diff)
+    // Neutral round-start: a non-Live -> Live phase transition, or a round-index increment.
+    // Either signal alone is sufficient (different titles publish them at different cadences).
+    private static bool IsRoundStart(NeutralDetectorContext context)
     {
-        var previousRound = diff.Previous?.GetModule<RoundModule>();
-        var currentRound = diff.Current.GetModule<RoundModule>();
-        if (currentRound is null)
-        {
-            return false;
-        }
+        var currentClock = context.Current.Clock;
+        var previousClock = context.Previous?.Clock;
 
-        var roundIncremented = previousRound?.Round.HasValue == true
-            && currentRound.Round.HasValue
-            && currentRound.Round.Value > previousRound.Round.Value;
+        var phaseWentLive = currentClock.MatchPhase == MatchPhaseNeutral.Live
+            && previousClock?.MatchPhase != MatchPhaseNeutral.Live;
 
-        var targetPhase = _options.RoundStartPhase;
-        var phaseWentLive = !string.IsNullOrWhiteSpace(targetPhase)
-            && string.Equals(currentRound.Phase, targetPhase, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(previousRound?.Phase, targetPhase, StringComparison.OrdinalIgnoreCase);
+        var roundIncremented = previousClock is { RoundIndex: int prevRound }
+            && currentClock.RoundIndex is int currRound
+            && currRound > prevRound;
 
-        return roundIncremented || phaseWentLive;
+        return phaseWentLive || roundIncremented;
     }
 
-    private bool IsCombatCondition(SnapshotDiff diff, GameSnapshot snapshot)
+    // Combat / idle remain on the raw activity diff and module reads. Neutralizing them is
+    // tracked separately; this detector still emits combat/idle in the same way it did before.
+    private bool IsCombatCondition(NeutralDetectorContext context)
     {
-        var combat = snapshot.GetModule<CombatModule>();
-        return diff.Activity.DidDealDamage
-            || diff.Activity.DidReceiveDamage
+        var combat = context.Current.Raw.GetModule<CombatModule>();
+        return context.Activity.DidDealDamage
+            || context.Activity.DidReceiveDamage
             || (combat?.InCombatHint ?? false);
     }
 
-    private bool IsIdleCondition(SnapshotDiff diff, GameSnapshot snapshot)
+    private bool IsIdleCondition(NeutralDetectorContext context)
     {
-        var vitals = snapshot.GetModule<VitalsModule>();
-        if (!(vitals?.IsAlive ?? false))
+        if (context.Current.Neutral.IsAlive != true)
         {
             return false;
         }
 
+        var snapshot = context.Current.Raw;
         var position = snapshot.GetModule<PositionModule>();
         var isMoving = (position?.IsMoving ?? false)
-            || diff.Activity.DistanceMoved >= _options.MovementThreshold;
+            || context.Activity.DistanceMoved >= _options.MovementThreshold;
 
-        if (isMoving || IsCombatCondition(diff, snapshot))
+        if (isMoving || IsCombatCondition(context))
         {
             return false;
         }
 
-        _lastActivityAt ??= snapshot.Timestamp;
-        var idleDuration = snapshot.Timestamp - _lastActivityAt.Value;
+        var timestamp = context.Current.Clock.WallTimeUtc;
+        _lastActivityAt ??= timestamp;
+        var idleDuration = timestamp - _lastActivityAt.Value;
 
         return idleDuration >= _options.IdleDebounce;
     }
@@ -169,14 +168,8 @@ public sealed class EventDetector
         return startedAt.HasValue && now - startedAt.Value >= debounce;
     }
 
-    private static string? BuildRoundStartDetail(GameSnapshot snapshot)
+    private static string? BuildRoundStartDetail(GameClockSnapshot clock)
     {
-        var round = snapshot.GetModule<RoundModule>();
-        if (round?.Round is null)
-        {
-            return null;
-        }
-
-        return $"round={round.Round}";
+        return clock.RoundIndex is int round ? $"round={round}" : null;
     }
 }

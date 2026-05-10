@@ -1,10 +1,12 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Core.Adapters;
 using Core.Diff;
 using Core.Models;
 using Core.Rules;
 using Cs2Simulator.Scenarios.Scenarios;
 using FluentAssertions;
+using GsiHost.Adapters;
 
 namespace Cs2Simulator.Tests;
 
@@ -67,20 +69,26 @@ public sealed class EventDetectionFidelityTests
 
         var detector = new EventDetector();
         var differ = new SnapshotDiffer();
-        var mapper = HostMappingHelper.CreateMapper();
+        var adapter = new Cs2GameAdapter(HostMappingHelper.CreateMapper());
 
-        GameSnapshot? previous = null;
+        AdapterObservation? previousObservation = null;
         var firedKeys = new List<string>();
 
         foreach (var tick in ticks)
         {
             var json = Cs2Simulator.Scenarios.Json.Cs2PayloadJson.Serialize(tick.Payload);
             var dto = System.Text.Json.JsonSerializer.Deserialize<GsiHost.Dtos.GsiPayloadDto>(json)!;
-            var snapshot = mapper.Map(dto, DateTimeOffset.UnixEpoch);
-            var diff = differ.Compute(previous, snapshot);
-            var events = detector.Detect(diff);
+            var observation = adapter.Adapt(dto, DateTimeOffset.UnixEpoch);
+            var diff = differ.Compute(previousObservation?.Raw, observation.Raw);
+            var context = new NeutralDetectorContext(
+                Current: observation,
+                Previous: previousObservation,
+                Activity: diff.Activity,
+                IsFirstObservation: previousObservation is null);
+
+            var events = detector.Detect(context);
             firedKeys.AddRange(events.Select(e => e.EventKey));
-            previous = snapshot;
+            previousObservation = observation;
         }
 
         var expectedRoundStart = expectedSequence.Count(k => k == EventKeys.RoundStart);

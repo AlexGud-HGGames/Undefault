@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using Core.Adapters;
 using Core.Models;
 
 namespace Core.Rules;
@@ -7,11 +8,11 @@ namespace Core.Rules;
 public interface IRulesEngine
 {
     Task<IReadOnlyList<NormalizedEvent>> EvaluateAsync(
-        GameSnapshot snapshot,
+        AdapterObservation observation,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<NormalizedEvent>> DetectAsync(
-        GameSnapshot snapshot,
+        AdapterObservation observation,
         CancellationToken cancellationToken = default);
 
     void Reset();

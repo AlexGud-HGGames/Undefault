@@ -1,8 +1,10 @@
 using Core.Actions;
 using Core.Actions.Spotify;
+using Core.Adapters;
 using Core.Configuration;
 using Core.Diff;
 using Core.Models;
+using Core.Music;
 using Core.Rules;
 using Core.Spotify;
 using Core.Spotify.Models;
@@ -71,8 +73,8 @@ public class ProfileRoutingTests
                 }
             }));
 
-        await engine.EvaluateAsync(BuildSnapshot(DateTimeOffset.UtcNow, 100, isAlive: true));
-        await engine.EvaluateAsync(BuildSnapshot(DateTimeOffset.UtcNow.AddSeconds(1), 0, isAlive: false));
+        await engine.EvaluateAsync(BuildObservation(DateTimeOffset.UtcNow, 100, isAlive: true));
+        await engine.EvaluateAsync(BuildObservation(DateTimeOffset.UtcNow.AddSeconds(1), 0, isAlive: false));
 
         action.Events.Should().ContainSingle();
         action.Events[0].EventKey.Should().Be(EventKeys.Death);
@@ -311,6 +313,28 @@ public class ProfileRoutingTests
                 new PositionModule(Position: Vector3.Zero, IsMoving: false),
                 new CombatModule(InCombatHint: false, LastDamageDealtAt: null, LastDamageReceivedAt: null)
             });
+    }
+
+    private static AdapterObservation BuildObservation(
+        DateTimeOffset timestamp,
+        int health,
+        bool isAlive)
+    {
+        var raw = BuildSnapshot(timestamp, health, isAlive);
+        var clock = new GameClockSnapshot(
+            WallTimeUtc: timestamp,
+            GameTimeSeconds: null,
+            IsGamePaused: false,
+            MatchPhase: MatchPhaseNeutral.Live,
+            RoundIndex: null);
+        var neutral = new NeutralContext(
+            IsAlive: isAlive,
+            EngagementPressure: null,
+            ObjectivePressure: null,
+            SpectatorOrObserver: null,
+            TransportIntent: TransportIntentNeutral.NoChange,
+            ObservedAtUtc: timestamp);
+        return new AdapterObservation(raw, clock, neutral, Array.Empty<TitleDomainEvent>(), SafetyFacts.Unknown());
     }
 
     private sealed class CaptureAction : IEventAction

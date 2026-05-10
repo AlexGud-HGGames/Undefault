@@ -54,8 +54,8 @@ public sealed class GsiProcessingService
 
         var observation = _adapter.Adapt(payload, DateTimeOffset.UtcNow);
         var events = _runtime.IsIntentCapture
-            ? await _rulesEngine.DetectAsync(observation.Raw, cancellationToken).ConfigureAwait(false)
-            : await _rulesEngine.EvaluateAsync(observation.Raw, cancellationToken).ConfigureAwait(false);
+            ? await _rulesEngine.DetectAsync(observation, cancellationToken).ConfigureAwait(false)
+            : await _rulesEngine.EvaluateAsync(observation, cancellationToken).ConfigureAwait(false);
 
         // Shadow facade runs after the legacy path and must never break it; failures are
         // swallowed with a warning.

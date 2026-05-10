@@ -51,16 +51,16 @@ The shadow-mode side of Phase A is now wired:
 
 The manifesto referenced “ScenarioController”; that feature was removed. The migration target is **music safety + session controller**, not YAML scenarios.
 
-## Legacy detector phase strings (Phase 2 carry-over)
+## Detector consumes neutral signals (UND-39)
 
-`EventDetectorOptions.RoundStartPhase` (default `"live"`) is still a CS2-only string that lives on `EventDetector`. It remains the legacy compatibility path so the existing `round_start -> duck` and `death -> restore_volume` behavior stays byte-for-byte identical while `Cs2GameAdapter` (UND-21 / Phase 2) populates neutral `MatchPhaseNeutral`, `SafetyFacts`, and `NeutralContext`.
+`EventDetector` now reads only neutral signals from `AdapterObservation`:
 
-Removing the CS2 phase string from `EventDetector` is intentionally deferred:
+- `round_start` fires on a `MatchPhaseNeutral.Live` transition (non-Live → Live) **or** on a `GameClockSnapshot.RoundIndex` increment. CS2 phase strings no longer appear in detector code; `EventDetectorOptions.RoundStartPhase` was removed.
+- `death` fires on a `NeutralContext.IsAlive` transition `true → false`. A `null → false` transition is intentionally **not** a death event (unknown alive state cannot be proven to be a transition).
+- The detector signature is `Detect(NeutralDetectorContext)`; `IRulesEngine.EvaluateAsync` / `DetectAsync` accept `AdapterObservation` directly.
+- Combat / idle still consume `ActivityDiff` plus raw `CombatModule` / `PositionModule` reads through `AdapterObservation.Raw`. Neutralizing them is tracked separately and is not in scope of the round/death migration.
 
-- the music safety + session controller is not yet wired (`IMusicOrchestrationFacade`, UND-22 / Phase 3);
-- migrating detection to consume `MatchPhaseNeutral.Live` instead of the raw CS2 string would change `EventDetector`’s contract before there is a neutral consumer to absorb the change.
-
-A later phase will move `round_start` detection (or its replacement event) onto the neutral clock and drop the CS2 phase string from detector options.
+Event keys (`round_start`, `death`) are unchanged so `RulesEngine.ActionMap` continues to fire the same actions; renaming or namespacing keys (`cs2.round_start`, etc.) belongs to the scenario rule pack issue.
 
 ## Manual intent timeline (current implementation)
 

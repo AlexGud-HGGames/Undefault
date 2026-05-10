@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Core.Actions;
+using Core.Adapters;
 using Core.Diff;
 using Core.Models;
 using Core.Stores;
@@ -15,6 +16,7 @@ public sealed class RulesEngine : IRulesEngine
     private readonly EventDetector _detector;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<string>> _actionMap;
     private readonly IReadOnlyDictionary<string, IEventAction> _actionsByKey;
+    private AdapterObservation? _previousObservation;
 
     public RulesEngine(
         ISnapshotStore snapshotStore,
@@ -40,32 +42,39 @@ public sealed class RulesEngine : IRulesEngine
     }
 
     public async Task<IReadOnlyList<NormalizedEvent>> EvaluateAsync(
-        GameSnapshot snapshot,
+        AdapterObservation observation,
         CancellationToken cancellationToken = default)
     {
-        var events = Detect(snapshot);
+        var events = Detect(observation);
         await ExecuteActionsAsync(events, cancellationToken).ConfigureAwait(false);
         return events;
     }
 
     public Task<IReadOnlyList<NormalizedEvent>> DetectAsync(
-        GameSnapshot snapshot,
+        AdapterObservation observation,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(Detect(snapshot));
+        return Task.FromResult(Detect(observation));
     }
 
-    private IReadOnlyList<NormalizedEvent> Detect(GameSnapshot snapshot)
+    private IReadOnlyList<NormalizedEvent> Detect(AdapterObservation observation)
     {
-        if (snapshot is null)
-        {
-            throw new ArgumentNullException(nameof(snapshot));
-        }
+        ArgumentNullException.ThrowIfNull(observation);
 
-        var previous = _snapshotStore.GetLast();
-        var diff = _differ.Compute(previous, snapshot);
-        var events = _detector.Detect(diff);
-        _snapshotStore.Save(snapshot);
+        var previousRaw = _snapshotStore.GetLast();
+        var diff = _differ.Compute(previousRaw, observation.Raw);
+
+        var context = new NeutralDetectorContext(
+            Current: observation,
+            Previous: _previousObservation,
+            Activity: diff.Activity,
+            IsFirstObservation: _previousObservation is null);
+
+        var events = _detector.Detect(context);
+
+        _snapshotStore.Save(observation.Raw);
+        _previousObservation = observation;
+
         return events;
     }
 
@@ -94,5 +103,6 @@ public sealed class RulesEngine : IRulesEngine
     {
         _detector.Reset();
         _snapshotStore.Clear();
+        _previousObservation = null;
     }
 }
