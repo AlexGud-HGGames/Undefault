@@ -20,6 +20,7 @@ All mappings must be documented in this file as they are implemented (append sub
 - The adapter output target is `Core/Adapters/AdapterObservation.cs`: `GameSnapshot Raw`, `GameClockSnapshot Clock`, `NeutralContext Neutral`, title domain events, and `SafetyFacts`.
 - Dota-specific facts may remain in Dota snapshot modules for diagnostics, but shared music behavior should consume `Clock`, `Neutral`, and `SafetyFacts`.
 - No shared FSM named after CS rounds; engagement/objective pressure only.
+- **Routing:** Dota gets its own typed HTTP endpoint (e.g. `/gsi/dota`) registered in `GsiHost/Program.cs` alongside the CS2 endpoint. Each title declares a `GameAdapterRegistration(TitleId, AppId, EndpointPath, Description)` and the shared `IGameAdapterRouter` exposes the registry at `GET /diagnostics/adapters`. See [multi-adapter-routing.md](multi-adapter-routing.md) for the design spike (per-endpoint chosen over per-process or single-router-by-appid).
 
 ## Versioning
 

@@ -214,8 +214,27 @@ The backend is currently a Minimal API host with these main routes:
 | `GET` | `/callback` | OAuth callback endpoint |
 | `GET` | `/spotify/callback` | alternate OAuth callback endpoint |
 | `GET` | `/diagnostics/music-shadow` | debug-only inspection of the Phase A music orchestration facade shadow output (UND-22) |
+| `GET` | `/diagnostics/adapters` | debug-only inspection of registered game adapters (`IGameAdapterRouter`); see [multi-adapter-routing.md](multi-adapter-routing.md) |
 
 See [manual-intent-timeline.md](manual-intent-timeline.md) for timeline storage, configuration, and how manual actions relate to `RulesEngine.ActionMap`.
+
+### Multi-adapter routing
+
+`GsiHost` runs as a single process and serves one HTTP endpoint per
+title. CS2 posts to `/gsi`; future titles add their own typed
+endpoint and adapter alongside CS2 without changing the CS2 path.
+The host owns one shared Spotify/OAuth/facade pipeline used by every
+title.
+
+`Core/Adapters/IGameAdapterRouter` is the metadata registry of which
+titles a given host serves. Each title declares a
+`GameAdapterRegistration(TitleId, AppId, EndpointPath, Description)`
+in DI; the registry is exposed read-only at
+`GET /diagnostics/adapters` and is the source of truth for tooling
+that needs to enumerate active titles. See
+[multi-adapter-routing.md](multi-adapter-routing.md) for the spike
+that compared per-process, per-endpoint, and single-router options
+and the rationale for the per-endpoint choice.
 
 ## GSI Ingestion Pipeline
 

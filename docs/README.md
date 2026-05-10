@@ -21,6 +21,7 @@ Long-form documentation for UndefaultIt lives in this folder. The [repository RE
 | [Mandatory CS2 ingestion](mandatory-cs2-ingestion-checklist.md) | Required inputs before music controller work |
 | [MVP priorities](mvp-priorities-and-confirmation.md) | Documented v1 defaults and deferrals |
 | [Ingestion spec (CS2 / Dota)](ingestion-spec-cs2-dota.md) | Snapshot extensions and future Dota shape |
+| [Multi-adapter routing](multi-adapter-routing.md) | How `GsiHost` will serve more than one game adapter (CS2 + future titles) |
 | [Mixer contract & wiring](mixer-contract-and-device-wiring.md) | `IMusicMixer` and Spotify integration boundaries |
 | [Music engine config v1](music-engine-config-schema-v1.md) | Options + observability snapshot schema |
 | [Rules engine migration](rules-engine-migration.md) | Single orchestration entry, no double Spotify side effects |
