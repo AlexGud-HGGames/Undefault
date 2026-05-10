@@ -588,6 +588,144 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
+    public async Task GsiEndpoint_ShadowMode_RoundStartTick_LegacyDucksOnce_AndShadowReportsSafe()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 61,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(spotifyClient);
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2200, 100, round: 11, phase: "freezetime"));
+        var response = await host.Client.PostAsJsonAsync(
+            "/gsi",
+            CreatePayload(2201, 100, round: 11, phase: "live"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        spotifyClient.VolumeCalls.Count.Should().Be(1);
+        spotifyClient.VolumeCalls[0].Should().Be(0);
+        spotifyClient.PauseCalls.Should().Be(0);
+        spotifyClient.ResumeCalls.Should().Be(0);
+        spotifyClient.PlayedUris.Should().BeEmpty();
+
+        var shadow = await host.Client.GetStringAsync("/diagnostics/music-shadow");
+        using var doc = JsonDocument.Parse(shadow);
+        var latest = doc.RootElement.GetProperty("latest");
+        latest.ValueKind.Should().Be(JsonValueKind.Object);
+        latest.GetProperty("desiredSafetyState").GetInt32().Should().Be((int)Core.Music.MusicSafetyState.Safe);
+        doc.RootElement.GetProperty("recent").GetArrayLength().Should().BeGreaterThanOrEqualTo(2);
+    }
+
+    [Fact]
+    public async Task GsiEndpoint_ShadowMode_DeathTick_LegacyRestoresOnce_AndShadowReportsDanger()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 61,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(spotifyClient);
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2300, 100, round: 12, phase: "freezetime"));
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2301, 100, round: 12, phase: "live"));
+
+        // Reset call counters but preserve the in-memory duck state set by the live tick.
+        var volumeCallsBeforeDeath = spotifyClient.VolumeCalls.Count;
+
+        var deathResponse = await host.Client.PostAsJsonAsync(
+            "/gsi",
+            CreatePayload(2302, 0, round: 12, phase: "live"));
+
+        deathResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var volumeCallsFromDeath = spotifyClient.VolumeCalls.Count - volumeCallsBeforeDeath;
+        volumeCallsFromDeath.Should().Be(1, "death must restore volume exactly once via the legacy ActionMap path");
+        spotifyClient.VolumeCalls[^1].Should().Be(61, "restore_volume should reuse the pre-duck volume captured before round_start");
+        spotifyClient.PauseCalls.Should().Be(0);
+        spotifyClient.ResumeCalls.Should().Be(0);
+        spotifyClient.PlayedUris.Should().BeEmpty();
+
+        var shadow = await host.Client.GetStringAsync("/diagnostics/music-shadow");
+        using var doc = JsonDocument.Parse(shadow);
+        var latest = doc.RootElement.GetProperty("latest");
+        latest.GetProperty("desiredSafetyState").GetInt32().Should().Be((int)Core.Music.MusicSafetyState.Danger);
+    }
+
+    [Fact]
+    public async Task MusicShadowDiagnostics_ShadowModeDisabled_ReturnsEmptyAndDoesNotInvokeFacade()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 61,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildAppSettingsJson("http://127.0.0.1:5292", musicOrchestrationShadowMode: false));
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2400, 100, round: 13, phase: "freezetime"));
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2401, 100, round: 13, phase: "live"));
+
+        // Legacy Spotify path is unchanged whether shadow mode is on or off.
+        spotifyClient.VolumeCalls.Should().Equal(0);
+
+        var shadow = await host.Client.GetStringAsync("/diagnostics/music-shadow");
+        using var doc = JsonDocument.Parse(shadow);
+        doc.RootElement.GetProperty("latest").ValueKind.Should().Be(JsonValueKind.Null);
+        doc.RootElement.GetProperty("recent").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task IntentCapture_UserAction_DoesNotInvokeFacade_OrRouteThroughActionMap()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 70,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        var response = await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "custom:music_pause", action = "pause" });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Manual intent applied through ISpotifyPlaybackControl, not via RulesEngine.ActionMap.
+        spotifyClient.PauseCalls.Should().Be(1);
+        spotifyClient.VolumeCalls.Should().BeEmpty();
+        spotifyClient.ResumeCalls.Should().Be(0);
+        spotifyClient.PlayedUris.Should().BeEmpty();
+
+        // Shadow facade is only invoked from /gsi ticks, not from /user-actions.
+        var shadow = await host.Client.GetStringAsync("/diagnostics/music-shadow");
+        using var doc = JsonDocument.Parse(shadow);
+        doc.RootElement.GetProperty("latest").ValueKind.Should().Be(JsonValueKind.Null);
+        doc.RootElement.GetProperty("recent").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
     public void Cs2GameAdapter_PreservesGsiSnapshotMapperOutput()
     {
         var mapper = CreateSnapshotMapper();
@@ -843,7 +981,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         bool allowGsiReset = true,
         string runtimeMode = "scenario_playback",
         bool enableTimeline = false,
-        bool enableManualMusicActions = false)
+        bool enableManualMusicActions = false,
+        bool musicOrchestrationShadowMode = true)
     {
         return $$"""
         {
@@ -900,6 +1039,9 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
               "round_start": [ "{{roundStartAction}}" ],
               "death": [ "{{deathAction}}" ]
             }
+          },
+          "MusicOrchestration": {
+            "ShadowMode": {{(musicOrchestrationShadowMode ? "true" : "false")}}
           }
         }
         """;

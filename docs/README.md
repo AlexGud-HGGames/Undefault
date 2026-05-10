@@ -12,6 +12,7 @@ Long-form documentation for UndefaultIt lives in this folder. The [repository RE
 | [Roadmap](roadmap.md) | Product direction and planned work |
 | [Quick launch](quick-launch.md) | Mock/skip-based startup for local testing and failure handling |
 | [Spotify playback policy boundary](spotify-playback-policy-boundary.md) | Product guardrails: local playback control, not synchronized Spotify content or a game soundtrack |
+| [Spotify developer compliance notes](spotify-developer-compliance-notes.md) | Project-specific reading of Spotify Developer Terms, Policy, and Compliance Tips with concrete guardrails |
 | [Music safety state](music-safety-state-spec.md) | Authoritative `Unknown` / `Safe` / `Danger` contract, dominance, hysteresis |
 | [Failure safety](failure-safety-spec.md) | Stale GSI, Spotify failures, degraded device, conservative defaults |
 | [Volume composition](volume-composition-spec.md) | Normative merge algebra for transport vs gain vs clamps |

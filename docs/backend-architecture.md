@@ -213,6 +213,7 @@ The backend is currently a Minimal API host with these main routes:
 | `GET` | `/spotify/authorize` | produce an authorization URL in real mode |
 | `GET` | `/callback` | OAuth callback endpoint |
 | `GET` | `/spotify/callback` | alternate OAuth callback endpoint |
+| `GET` | `/diagnostics/music-shadow` | debug-only inspection of the Phase A music orchestration facade shadow output (UND-22) |
 
 See [manual-intent-timeline.md](manual-intent-timeline.md) for timeline storage, configuration, and how manual actions relate to `RulesEngine.ActionMap`.
 
@@ -304,6 +305,19 @@ Current behavior:
 That execution order matters. If multiple actions are mapped to one event, they run in the order listed in `RulesEngine.ActionMap`.
 
 **`ActionMap` is the source of truth for which `IEventAction` runs for each normalized event.** Console-first music behavior then depends on mapping those events to `spotify.control_profile` and editing `control-profiles.json` (or on legacy `spotify.profile` / `spotify.volume_duck` if you configure those keys instead).
+
+### Music orchestration facade — shadow mode (Phase A)
+
+UND-22 introduced `IMusicOrchestrationFacade.EvaluateShadow(AdapterObservation)` and a default `ShadowMusicOrchestrationFacade` in `Core`. `GsiProcessingService` calls the facade after `RulesEngine.EvaluateAsync` (or `DetectAsync` in intent capture) and forwards the resulting `MusicEngineDebugSnapshot` to `IShadowMusicSnapshotSink`. The shadow path is observe-only:
+
+- no Spotify side effects from the facade
+- no mutation of `EventDetector` state
+- no change to the `/gsi` HTTP response shape
+- no change to `RulesEngine.ActionMap` dispatch
+
+The bounded ring (`InMemoryShadowMusicSnapshotSink`, 32 entries) is exposed read-only at `GET /diagnostics/music-shadow` for parity inspection between facade output and the legacy `round_start -> duck` / `death -> restore_volume` outcomes. The endpoint is debug surface, not user-facing product behavior, and is mapped in both runtime modes during the migration window.
+
+`appsettings.json` adds `MusicOrchestration:ShadowMode` (default `true`). When `false`, `GsiProcessingService` skips the facade entirely and the diagnostics endpoint returns `{ latest: null, recent: [] }`. See [docs/rules-engine-migration.md](rules-engine-migration.md) for the staged plan, including Phase B (shrink `ActionMap`).
 
 ## Current Default Runtime Behavior
 

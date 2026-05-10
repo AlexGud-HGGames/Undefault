@@ -15,6 +15,7 @@ public sealed class UserActionService
     private readonly ISpotifyPlaybackControl _playback;
     private readonly SpotifyVolumeDuckOptions _duckOptions;
     private readonly ManualMusicActionOptions _options;
+    private readonly RuntimeOptions _runtime;
     private readonly TimelineCaptureService _timeline;
     private readonly ILogger<UserActionService> _logger;
 
@@ -23,6 +24,7 @@ public sealed class UserActionService
         ISpotifyPlaybackControl playback,
         IOptions<SpotifyVolumeDuckOptions> duckOptions,
         IOptions<ManualMusicActionOptions> options,
+        IOptions<RuntimeOptions> runtime,
         TimelineCaptureService timeline,
         ILogger<UserActionService> logger)
     {
@@ -30,6 +32,7 @@ public sealed class UserActionService
         _playback = playback;
         _duckOptions = duckOptions.Value;
         _options = options.Value;
+        _runtime = runtime.Value;
         _timeline = timeline;
         _logger = logger;
     }
@@ -38,20 +41,8 @@ public sealed class UserActionService
         UserActionRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (!_options.Enabled)
-        {
-            var disabled = new TimelineCommandOutcome(
-                TimelineOutcomeStatuses.Disabled,
-                Message: "Manual music actions are disabled.");
-            var disabledEntry = _timeline.RecordUserAction(
-                request.EventKey,
-                request.Action,
-                request.Detail,
-                disabled);
-
-            return new UserActionResponse(disabledEntry, disabled);
-        }
-
+        // Validate the payload shape before checking the enabled gate so a malformed
+        // request always surfaces as `invalid` rather than being masked as `disabled`.
         var eventKey = EventKeys.Normalize(request.EventKey);
         if (string.IsNullOrWhiteSpace(eventKey))
         {
@@ -79,6 +70,20 @@ public sealed class UserActionService
                 invalid);
 
             return new UserActionResponse(invalidEntry, invalid);
+        }
+
+        if (!_options.IsEnabled(_runtime))
+        {
+            var disabled = new TimelineCommandOutcome(
+                TimelineOutcomeStatuses.Disabled,
+                Message: "Manual music actions are disabled.");
+            var disabledEntry = _timeline.RecordUserAction(
+                eventKey,
+                request.Action,
+                request.Detail,
+                disabled);
+
+            return new UserActionResponse(disabledEntry, disabled);
         }
 
         if (!IsAllowed(eventKey))

@@ -2,6 +2,7 @@ using Core.Actions;
 using Core.Actions.Spotify;
 using Core.Configuration;
 using Core.Diff;
+using Core.Music;
 using Core.Rules;
 using Core.Services;
 using Core.Spotify;
@@ -33,6 +34,8 @@ builder.Services.AddSingleton<IPlaybackPolicy, NoOpPlaybackPolicy>();
 builder.Services.AddSingleton<ISmartTrackStartService, JsonSmartTrackStartService>();
 builder.Services.AddSingleton<ITrackPlaybackService, TrackPlaybackService>();
 builder.Services.AddSingleton<IRulesEngine, RulesEngine>();
+builder.Services.AddSingleton<IMusicOrchestrationFacade, ShadowMusicOrchestrationFacade>();
+builder.Services.AddSingleton<IShadowMusicSnapshotSink, InMemoryShadowMusicSnapshotSink>();
 builder.Services.AddSingleton<GsiProcessingService>();
 builder.Services.AddSingleton<TimelineCaptureService>();
 builder.Services.AddSingleton<UserActionService>();
@@ -76,6 +79,8 @@ builder.Services.Configure<ManualMusicActionOptions>(
     builder.Configuration.GetSection(ManualMusicActionOptions.SectionName));
 builder.Services.Configure<KeybindOptions>(
     builder.Configuration.GetSection(KeybindOptions.SectionName));
+builder.Services.Configure<MusicOrchestrationOptions>(
+    builder.Configuration.GetSection(MusicOrchestrationOptions.SectionName));
 
 var app = builder.Build();
 
@@ -254,6 +259,16 @@ app.MapGet("/spotify/callback", async (
     CancellationToken cancellationToken) =>
 {
     return await HandleSpotifyCallbackAsync(code, services, cancellationToken);
+});
+
+// Debug-only surface for the shadow facade; intentionally mapped in both runtime modes.
+app.MapGet("/diagnostics/music-shadow", (IShadowMusicSnapshotSink sink) =>
+{
+    return Results.Ok(new
+    {
+        latest = sink.Latest,
+        recent = sink.Recent()
+    });
 });
 
 // AppStateService subscribes to GsiProcessingService.Processed in its ctor. /gsi does not

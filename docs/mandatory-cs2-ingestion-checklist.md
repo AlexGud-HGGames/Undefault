@@ -4,14 +4,14 @@ These fields must be **first-class** in the observation / snapshot model (or exp
 
 ## Checklist
 
-| Input | Required for | Status in codebase (when doc written) |
+| Input | Required for | Status in codebase |
 |-------|----------------|----------------------------------------|
-| Tactical pause / game paused | `GameClock.IsGamePaused`, danger windows | **TBD** — extend GSI DTO + mapper |
+| Tactical pause / game paused | `GameClock.IsGamePaused`, danger windows | **TBD** — `Cs2GameAdapter.GameClockSnapshot.IsGamePaused` is hard-coded to `false` because no reliable signal is mapped yet. Extend GSI DTO + mapper. |
 | Post-round timing windows | Hysteresis, danger at end-of-round | **TBD** |
-| Spectator vs active player | `SpectatorOrObserver`, safety | **TBD** — may need GSI `player_activity` / `provider` fields |
-| Explicit freeze / live / end boundaries | Phase-neutral `MatchPhaseNeutral` | Partial — `RoundModule.Phase` exists; may need richer mapping |
-| Stale observation age | `Unknown` / `Danger` escalation | **TBD** — timestamp exists on `GameSnapshot` |
-| Bomb planted / timer / defusing state | Defusal tension + danger | **TBD** — not in current diff modules |
+| Spectator vs active player | `SpectatorOrObserver`, safety | Heuristic — `Cs2GameAdapter` derives `NeutralContext.SpectatorOrObserver` from `player.activity != "playing"` or a missing `state` block. Conservative: returns null when the signal is genuinely unknown. A dedicated GSI signal would be more robust. |
+| Explicit freeze / live / end boundaries | Phase-neutral `MatchPhaseNeutral` | Done — `Cs2GameAdapter.MapMatchPhase` translates `live / freezetime / warmup / intermission / gameover` to `MatchPhaseNeutral`. Unknown values fall through to `Unknown`. CS2 phase strings stay inside the adapter. |
+| Stale observation age | `Unknown` / `Danger` escalation | Done — `Cs2GameAdapter` flags `SafetyFacts.IsStale = true` when `receivedAt - provider.timestamp > 5s` (`Cs2GameAdapter.ProviderTimestampStaleThreshold`). Missing provider timestamp keeps `IsStale = false` and records `no-provider-timestamp` in `Reason`. |
+| Bomb planted / timer / defusing state | Defusal tension + danger | **TBD** — bomb / objective DTOs are not parsed in `GsiHost/Dtos`, so `NeutralContext.ObjectivePressure` stays null today (TODO marker in `Cs2GameAdapter`). |
 
 ## Acceptance gate
 
