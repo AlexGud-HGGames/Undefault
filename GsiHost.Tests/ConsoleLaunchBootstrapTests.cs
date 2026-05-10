@@ -39,7 +39,6 @@ public sealed class ConsoleLaunchBootstrapTests
             settings.ConfigurationOverrides.ContainsKey("Spotify:ClientSecret").Should().BeFalse(
                 "PKCE flow no longer carries a client_secret");
             prompter.ValuePrompts.Should().Be(0);
-            prompter.SecretPrompts.Should().Be(0);
         });
     }
 
@@ -94,8 +93,6 @@ public sealed class ConsoleLaunchBootstrapTests
                 "PKCE flow has no client_secret");
             store.SavedSecrets.Should().BeEquivalentTo(new SpotifyLocalSecrets("prompted-client-id"));
             prompter.ValuePrompts.Should().Be(1);
-            prompter.SecretPrompts.Should().Be(0,
-                "the client_secret prompt is removed in the PKCE flow");
         });
     }
 
@@ -157,7 +154,6 @@ public sealed class ConsoleLaunchBootstrapTests
             settings.ConfigurationOverrides["UseMockSpotify"].Should().Be("true");
 
             prompter.ValuePrompts.Should().Be(0);
-            prompter.SecretPrompts.Should().Be(0);
         });
     }
 
@@ -317,30 +313,18 @@ public sealed class ConsoleLaunchBootstrapTests
     private sealed class FakeConsoleCredentialPrompter : IConsoleCredentialPrompter
     {
         private readonly string? _value;
-        // Probe-only — UND-47 should never call ReadSecret. Kept as a counter so the
-        // PKCE tests can assert that fact.
-        private readonly string? _legacySecret;
 
-        public FakeConsoleCredentialPrompter(string? value = null, string? legacySecret = null)
+        public FakeConsoleCredentialPrompter(string? value = null)
         {
             _value = value;
-            _legacySecret = legacySecret;
         }
 
         public int ValuePrompts { get; private set; }
-
-        public int SecretPrompts { get; private set; }
 
         public string? ReadValue(string prompt)
         {
             ValuePrompts++;
             return _value;
-        }
-
-        public string? ReadSecret(string prompt)
-        {
-            SecretPrompts++;
-            return _legacySecret;
         }
     }
 

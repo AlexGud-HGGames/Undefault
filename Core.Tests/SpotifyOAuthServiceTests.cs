@@ -5,7 +5,6 @@ using System.Text;
 using System.Web;
 using Core.Spotify;
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Core.Tests;
@@ -135,8 +134,7 @@ public sealed class SpotifyOAuthServiceTests
     {
         return new SpotifyOAuthService(
             new FakeHttpClientFactory(handler),
-            Options.Create(options),
-            NullLogger<SpotifyOAuthService>.Instance);
+            Options.Create(options));
     }
 
     private static string Base64UrlNoPad(byte[] bytes)

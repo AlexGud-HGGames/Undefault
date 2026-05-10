@@ -6,7 +6,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Core.Spotify.Models;
 using Microsoft.Extensions.Http;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Core.Spotify;
@@ -28,7 +27,6 @@ public sealed class SpotifyOAuthService
 
     private readonly SpotifyClientOptions _options;
     private readonly HttpClient _httpClient;
-    private readonly ILogger<SpotifyOAuthService> _logger;
 
     // Per-attempt verifier storage. Keyed by `state` when the caller supplies one, and
     // by a fixed sentinel for stateless callers (legacy console flow). Verifiers are
@@ -38,12 +36,10 @@ public sealed class SpotifyOAuthService
 
     public SpotifyOAuthService(
         IHttpClientFactory httpClientFactory,
-        IOptions<SpotifyClientOptions> options,
-        ILogger<SpotifyOAuthService> logger)
+        IOptions<SpotifyClientOptions> options)
     {
         _options = options.Value;
         _httpClient = httpClientFactory.CreateClient("SpotifyOAuth");
-        _logger = logger;
     }
 
     /// <summary>

@@ -72,6 +72,14 @@ public sealed class CredentialAndTokenLoggingRedactionTests
 
         // 2) SpotifyOAuthService: full PKCE round-trip (authorize → exchange → refresh)
         //    with a fake handler returning the dummy tokens.
+        //
+        // UND-49: SpotifyOAuthService no longer takes an ILogger after the dead-code
+        // sweep. The "Core.Spotify.SpotifyOAuthService" logger category is still wired
+        // up here by name so that any future log emitted under that category — by the
+        // service or by anything else routing through the same factory — is captured
+        // and re-checked against the bans below.
+        _ = loggerFactory.CreateLogger("Core.Spotify.SpotifyOAuthService");
+
         var tokenHandler = new DummyTokenHandler(DummyAccessToken, DummyRefreshToken);
         var oauth = new SpotifyOAuthService(
             new SingleHandlerHttpClientFactory(tokenHandler),
@@ -79,8 +87,7 @@ public sealed class CredentialAndTokenLoggingRedactionTests
             {
                 ClientId = DummyClientId,
                 RedirectUri = "http://127.0.0.1:5292/callback"
-            }),
-            loggerFactory.CreateLogger<SpotifyOAuthService>());
+            }));
 
         _ = oauth.GetAuthorizationUrl(state: "redaction-state");
         var exchanged = await oauth.ExchangeCodeForTokenAsync("auth-code", state: "redaction-state");
@@ -219,7 +226,6 @@ public sealed class CredentialAndTokenLoggingRedactionTests
     private sealed class NullPrompter : IConsoleCredentialPrompter
     {
         public string? ReadValue(string prompt) => null;
-        public string? ReadSecret(string prompt) => null;
     }
 
     private sealed class InMemorySpotifySecretStore : ISpotifySecretStore

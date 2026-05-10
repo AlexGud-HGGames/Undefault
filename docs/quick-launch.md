@@ -1,49 +1,46 @@
 # Quick Launch
 
-This guide helps you start `GsiHost` quickly for local iteration. Use `--quick` when you want the backend and endpoints up immediately without CS2 auto-setup or real Spotify OAuth.
+Start `GsiHost` for local iteration. Use `--quick` to bring the backend up immediately without CS2 auto-setup or real Spotify OAuth.
 
-The normal host startup path is Windows-only today because it uses the encrypted Windows secret store for Spotify app credentials. Real Spotify playback control also requires Spotify Premium and an active playback device.
+The normal startup path is Windows-only because it uses the encrypted Windows secret store (DPAPI, CurrentUser scope) for the Spotify `CLIENT_ID`. Real Spotify playback control also requires Spotify Premium and an active playback device.
 
-## Fastest Start
-
-From the repository root:
+## Fastest start
 
 ```powershell
 dotnet run --project .\GsiHost -- --quick
 ```
 
-In `--quick` mode, you get:
+`--quick` mode gives you mock Spotify (no OAuth, no credential prompts), CS2 auto-setup skipped, Smart Track warmup skipped, and best-effort optional diagnostics that warn instead of failing startup.
 
-- mock Spotify playback control (no OAuth and no credential prompts)
-- CS2 auto-setup skipped by default
-- Smart Track warmup skipped by default
-- startup continues even if optional diagnostics fail (warnings are logged to the console)
-
-## Real Spotify, Faster Startup
-
-Use these when you want real Spotify, but still want faster startup:
+## Real Spotify, faster startup
 
 ```powershell
 dotnet run --project .\GsiHost -- --skip-cs2-setup
-```
-
-```powershell
 dotnet run --project .\GsiHost -- --skip-smart-track-warmup
 ```
 
 ## Spotify mode overrides
 
-You can explicitly control the Spotify client mode:
+- `--use-mock-spotify` forces mock mode.
+- `--use-real-spotify` forces real OAuth and disables `--quick` defaults.
 
-- `--use-mock-spotify` forces mock mode
-- `--use-real-spotify` forces real OAuth mode and disables the quick-launch defaults
+## Spotify credentials (PKCE, post-UND-47)
 
-Spotify app credentials can come from `CLIENT_ID` / `CLIENT_SECRET`, the encrypted local store, `appsettings.json`, or the interactive console prompt. Use `--reset-spotify-secrets` to overwrite saved credentials and `--clear-spotify-secrets` to remove them.
+Spotify OAuth uses Authorization Code with PKCE, so the desktop client carries no `client_secret`. Only the public `CLIENT_ID` is needed.
 
-## Failure handling behavior
+Sources, in resolution order (first non-empty wins):
 
-The host treats some startup steps as non-critical:
+1. `CLIENT_ID` environment variable.
+2. Encrypted local store (Windows DPAPI; path printed in the startup checklist).
+3. `Spotify:ClientId` in `appsettings.json`.
+4. Interactive console prompt (only if 1–3 are empty).
 
-- CS2 auto-setup and Smart Track warmup are skipped via flags or are best-effort when attempted.
-- The startup checklist is best-effort: if reading CS2 setup status or control profiles fails, the host keeps running and logs a warning instead of terminating.
+Notes:
 
+- `CLIENT_SECRET` is no longer read. If it is set in the environment, the host emits one DEBUG line saying it is being ignored; the value itself is never read or echoed.
+- `--reset-spotify-secrets` overwrites the cached `CLIENT_ID`.
+- `--clear-spotify-secrets` wipes the encrypted store. With PKCE there is no `client_secret` to clear; the flag still removes the cached `CLIENT_ID` (and any legacy `client_secret` blob from a pre-UND-47 install).
+
+## Failure handling
+
+CS2 auto-setup and Smart Track warmup are best-effort. If reading CS2 setup status or control profiles fails during the startup checklist, the host keeps running and logs a warning instead of terminating.

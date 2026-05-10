@@ -101,16 +101,12 @@ data for an automated rule generator that learns from Spotify content.
 
 ### 8. No commercial use of a Streaming SDA — Policy IV
 
-For Streaming SDAs the policy bans:
-
-1. selling the SDA, the Spotify Platform, Spotify Content, or access thereto;
-2. in-app payment / monetization;
-3. selling advertising, sponsorships, or promotions on the SDA itself.
-
-Concrete consequence: we cannot charge for UndefaultIt as long as it controls
-Spotify playback. We cannot put ads, donation tiers, or paid feature unlocks
-in the host or any future client. Limited commercial use is only allowed for
-**Non-Streaming** SDAs, which we are not.
+For Streaming SDAs the policy bans selling the SDA / Platform / Content /
+access, in-app payment, and selling ads, sponsorships, or promotions on the
+SDA. Concrete consequence: we cannot charge for UndefaultIt, run ads, take
+donations, or sell feature unlocks for as long as it controls Spotify
+playback. Limited commercial use is only allowed for **Non-Streaming** SDAs,
+which we are not.
 
 ### 9. Personal, non-commercial use only — Policy III.11
 
@@ -139,10 +135,14 @@ them in memory only (per README "Important Limits"), which is the most
 conservative option.
 - If we ever persist tokens, encryption-at-rest plus user-controlled
 deletion are required by Appendix A §6 ("Information Security Practices").
-- Spotify app credentials (`CLIENT_ID` / `CLIENT_SECRET`) belong to the
-developer, not the end user, and Terms VI.4 makes us responsible for
-keeping them confidential. The encrypted Windows secret store is the
-right path; never log them.
+- Post-UND-47 the desktop client uses Authorization Code with PKCE, so
+**only `CLIENT_ID` is in play** — there is no `CLIENT_SECRET` to ship,
+prompt for, store, or rotate. Terms VI.4 (keeping app credentials
+confidential) is satisfied automatically because we never possess a
+client secret in the first place; Spotify's PKCE guidance explicitly
+endorses this for desktop clients that cannot keep a secret. The
+encrypted Windows secret store still caches `CLIENT_ID` so it does not
+have to be retyped each launch; never log `CLIENT_ID` or any token.
 
 ### Privacy policy & EULA — Terms V
 
@@ -172,32 +172,25 @@ id, last saved volume per user) is wiped on disconnect.
 
 ### Don't store what you can fetch — Compliance Tips
 
-Spotify recommends fetching profile info, display name, country, etc.,
-on demand instead of caching. For us, this means:
-
-- the "last saved volume" we use for `restore_volume` is acceptable
-because it is operational state, not user profile data;
-- avoid persisting playlists, track names, artist names, listening history,
-or device lists beyond the lifetime of the host process.
+Spotify recommends fetching profile info, display name, country, etc., on
+demand instead of caching. The "last saved volume" we use for
+`restore_volume` is acceptable because it is operational state, not user
+profile data; avoid persisting playlists, track / artist names, listening
+history, or device lists beyond the host process lifetime.
 
 ## Caching & Storage of Spotify Content — Terms IV
 
 > You may not store, aggregate or create compilations or databases of Spotify
 > Content … Do not store Spotify Content indefinitely.
 
-Allowed temporary caching:
+Allowed temporary caching is limited to metadata and cover art (we currently
+use neither beyond URI strings) and Premium-only Conditional Downloads
+(time-limited offline syncing — we do **not** do this and should not start).
 
-- metadata and cover art (we currently use neither beyond URI strings);
-- Conditional Downloads of sound recordings — Premium-only, time-limited
-offline syncing. We do **not** do this and should not start.
-
-Concrete rules for our codebase:
-
-- Do not snapshot Spotify catalog data into JSON files in the repo or in
-user content roots.
-- The timeline JSONL must record our normalized events and our manual
-intent records. It must not become a log of Spotify track titles, album
-art, or audio features. URIs are fine as opaque identifiers.
+Concrete rules: do not snapshot Spotify catalog data into JSON files in the
+repo or in user content roots. The timeline JSONL must record our normalized
+events and manual intent records, not Spotify track titles, album art, or
+audio features. URIs are fine as opaque identifiers.
 
 ## Branding, Attribution, and Naming — Policy II, VI; Terms III
 
@@ -254,8 +247,10 @@ also our defense against accidental synchronization-style behavior.
 - **No retry storms.** Policy IV bans "excessive service calls that are not
 strictly required." Our processing pipeline must coalesce events and back
 off on Spotify errors.
-- **Logs scrub credentials.** No `CLIENT_SECRET`, no access token, no
-refresh token in logs (mock or real).
+- **Logs scrub credentials.** No `CLIENT_ID`, no access token, no refresh
+token in logs (mock or real). `CLIENT_SECRET` is not a live concern post-
+UND-47 because PKCE removed it from the design entirely; the redaction
+test still bans the literal as defence-in-depth.
 - `**Hotkeys + Timeline` is internal.** Per workspace rule, manual intent
 is for testers and the product owner. It must not become a public
 feature that profiles users or aggregates listening behavior.

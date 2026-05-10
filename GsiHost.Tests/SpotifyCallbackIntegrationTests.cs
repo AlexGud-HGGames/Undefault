@@ -6,7 +6,6 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace GsiHost.Tests;
@@ -50,8 +49,7 @@ public sealed class SpotifyCallbackIntegrationTests : IClassFixture<WebApplicati
                                 ClientId = "spotify-client-id",
                                 RedirectUri = "http://127.0.0.1:5292/callback",
                                 Scopes = new[] { "user-modify-playback-state", "user-read-playback-state" }
-                            }),
-                            NullLogger<SpotifyOAuthService>.Instance));
+                            })));
                 });
             });
 

@@ -37,7 +37,6 @@ public sealed record SpotifyLocalSecrets(
 public interface IConsoleCredentialPrompter
 {
     string? ReadValue(string prompt);
-    string? ReadSecret(string prompt);
 }
 
 public interface ISpotifySecretStore
@@ -302,42 +301,6 @@ public static class ConsoleLaunchBootstrap
         {
             Console.Write($"{prompt}: ");
             return Console.ReadLine()?.Trim();
-        }
-
-        public string? ReadSecret(string prompt)
-        {
-            Console.Write($"{prompt}: ");
-            var buffer = new List<char>();
-
-            while (true)
-            {
-                var key = Console.ReadKey(intercept: true);
-                if (key.Key == ConsoleKey.Enter)
-                {
-                    Console.WriteLine();
-                    return new string(buffer.ToArray()).Trim();
-                }
-
-                if (key.Key == ConsoleKey.Backspace)
-                {
-                    if (buffer.Count == 0)
-                    {
-                        continue;
-                    }
-
-                    buffer.RemoveAt(buffer.Count - 1);
-                    Console.Write("\b \b");
-                    continue;
-                }
-
-                if (char.IsControl(key.KeyChar))
-                {
-                    continue;
-                }
-
-                buffer.Add(key.KeyChar);
-                Console.Write('*');
-            }
         }
     }
 }
