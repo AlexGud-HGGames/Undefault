@@ -1,10 +1,18 @@
-using System.Security.Cryptography;
 using System.Runtime.Versioning;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
 namespace GsiHost.Services;
 
+/// <summary>
+/// DPAPI-encrypted (CurrentUser scope) per-user store for the Spotify client identity.
+/// Post-UND-47 the only payload is the public <c>client_id</c>; PKCE removes the
+/// secret half. Files written by older builds are still readable — extra JSON fields
+/// (<c>ClientSecret</c>) are ignored at deserialization. The on-disk path and
+/// <c>v1</c> additional-entropy tag are kept stable so a tester upgrading does not
+/// have to re-prompt.
+/// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class WindowsProtectedSpotifySecretStore : ISpotifySecretStore
 {
@@ -43,15 +51,14 @@ public sealed class WindowsProtectedSpotifySecretStore : ISpotifySecretStore
 
             var jsonBytes = ProtectedData.Unprotect(protectedBytes, AdditionalEntropy, DataProtectionScope.CurrentUser);
             var secrets = JsonSerializer.Deserialize<SpotifyLocalSecrets>(jsonBytes);
-            if (string.IsNullOrWhiteSpace(secrets?.ClientId) || string.IsNullOrWhiteSpace(secrets.ClientSecret))
+            if (string.IsNullOrWhiteSpace(secrets?.ClientId))
             {
                 return null;
             }
 
             return secrets with
             {
-                ClientId = secrets.ClientId.Trim(),
-                ClientSecret = secrets.ClientSecret.Trim()
+                ClientId = secrets.ClientId.Trim()
             };
         }
         catch (Exception)
@@ -67,8 +74,7 @@ public sealed class WindowsProtectedSpotifySecretStore : ISpotifySecretStore
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
 
         var payload = new SpotifyLocalSecrets(
-            secrets.ClientId.Trim(),
-            secrets.ClientSecret.Trim());
+            secrets.ClientId.Trim());
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload);
         var protectedBytes = ProtectedData.Protect(jsonBytes, AdditionalEntropy, DataProtectionScope.CurrentUser);
         File.WriteAllBytes(FilePath, protectedBytes);

@@ -59,14 +59,12 @@ public sealed class AppSettingsConfigurationService : IConfigurationService
             root["UseMockSpotify"] = config.UseMockSpotify;
 
             var spotifyNode = root["Spotify"] as JsonObject ?? new JsonObject();
-            var clientSecret = spotifyNode["ClientSecret"]?.GetValue<string>();
             spotifyNode["ClientId"] = config.Spotify.ClientId;
             spotifyNode["RedirectUri"] = config.Spotify.RedirectUri;
             spotifyNode["Scopes"] = BuildStringArrayNode(config.Spotify.Scopes);
-            if (!string.IsNullOrWhiteSpace(clientSecret))
-            {
-                spotifyNode["ClientSecret"] = clientSecret;
-            }
+            // UND-47: PKCE flow has no client_secret. Strip any vestigial key from
+            // legacy on-disk appsettings.json so we never round-trip it back to disk.
+            spotifyNode.Remove("ClientSecret");
 
             root["Spotify"] = spotifyNode;
             root["Gsi"] = BuildGsiNode(config.Gsi);
@@ -98,7 +96,6 @@ public sealed class AppSettingsConfigurationService : IConfigurationService
         var spotifyNode = root["Spotify"] as JsonObject;
         var clientId = spotifyNode?["ClientId"]?.GetValue<string>() ?? string.Empty;
         var redirectUri = spotifyNode?["RedirectUri"]?.GetValue<string>() ?? string.Empty;
-        var clientSecret = spotifyNode?["ClientSecret"]?.GetValue<string>();
         var scopes = spotifyNode?["Scopes"] is JsonArray scopesArray
             ? scopesArray
                 .Select(item => item?.GetValue<string>() ?? string.Empty)
@@ -106,7 +103,7 @@ public sealed class AppSettingsConfigurationService : IConfigurationService
                 .ToArray()
             : Array.Empty<string>();
 
-        return new SpotifySystemConfig(clientId, redirectUri, scopes, clientSecret);
+        return new SpotifySystemConfig(clientId, redirectUri, scopes);
     }
 
     private static GsiConfig ParseGsi(JsonObject root, IConfiguration configuration)

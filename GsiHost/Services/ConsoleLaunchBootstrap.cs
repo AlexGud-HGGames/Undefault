@@ -1,5 +1,7 @@
 using System.Runtime.Versioning;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GsiHost.Services;
 
@@ -15,13 +17,21 @@ public sealed record ConsoleLaunchSettings(
     bool SavedToEncryptedStore,
     bool ClearedEncryptedStore,
     bool ResetEncryptedStoreRequested,
+    bool LegacyClientSecretEnvVarPresent,
     string EncryptedStorePath,
     IReadOnlyDictionary<string, string?> ConfigurationOverrides
 );
 
+/// <summary>
+/// Locally-persisted Spotify identity. Post-UND-47 this is just the public
+/// <c>client_id</c>; PKCE has no <c>client_secret</c> half. The record name and
+/// encrypted-store path are kept for backwards compatibility with already-written
+/// files so a tester upgrading does not need to manually run
+/// <c>--clear-spotify-secrets</c>; legacy fields in those files are simply ignored
+/// at load time.
+/// </summary>
 public sealed record SpotifyLocalSecrets(
-    string ClientId,
-    string ClientSecret
+    string ClientId
 );
 
 public interface IConsoleCredentialPrompter
@@ -65,7 +75,8 @@ public static class ConsoleLaunchBootstrap
             args,
             IsInteractiveConsole(),
             new SystemConsoleCredentialPrompter(),
-            CreateDefaultSecretStore());
+            CreateDefaultSecretStore(),
+            NullLogger.Instance);
 
         builder.Configuration.AddInMemoryCollection(settings.ConfigurationOverrides);
         builder.WebHost.UseUrls(settings.GsiBaseUrl);
@@ -77,12 +88,15 @@ public static class ConsoleLaunchBootstrap
         IReadOnlyCollection<string> args,
         bool isInteractiveConsole,
         IConsoleCredentialPrompter prompter,
-        ISpotifySecretStore secretStore)
+        ISpotifySecretStore secretStore,
+        ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(prompter);
         ArgumentNullException.ThrowIfNull(secretStore);
+
+        logger ??= NullLogger.Instance;
 
         var gsiBaseUrl = NormalizeBaseUrl(configuration["Gsi:Url"]);
         var redirectUri = NormalizeRedirectUri(configuration["Spotify:RedirectUri"], gsiBaseUrl);
@@ -102,32 +116,46 @@ public static class ConsoleLaunchBootstrap
         var clearEncryptedStoreRequested = HasArg(args, ClearSecretsArg);
         var clearedEncryptedStore = false;
 
-        if (clearEncryptedStoreRequested && secretStore.Exists())
+        if (clearEncryptedStoreRequested)
         {
-            secretStore.Delete();
-            clearedEncryptedStore = true;
+            // UND-47: with PKCE there is no client_secret to clear. The flag still
+            // wipes the cached client_id (and any legacy client_secret blob) so a
+            // tester rotating apps gets a fresh prompt next launch.
+            if (secretStore.Exists())
+            {
+                secretStore.Delete();
+                clearedEncryptedStore = true;
+            }
         }
 
         var envClientId = Environment.GetEnvironmentVariable("CLIENT_ID");
         var envClientSecret = Environment.GetEnvironmentVariable("CLIENT_SECRET");
+        var legacyClientSecretEnvVarPresent = !string.IsNullOrWhiteSpace(envClientSecret);
+
+        if (legacyClientSecretEnvVarPresent)
+        {
+            // UND-47: CLIENT_SECRET is no longer read or stored. Surfacing the
+            // *presence* (never the value) helps testers update their environment
+            // after the PKCE switch.
+            logger.LogDebug(
+                "CLIENT_SECRET environment variable is set but is ignored — Spotify OAuth uses PKCE and does not require a client secret.");
+        }
 
         SpotifyLocalSecrets? storedSecrets = null;
         if (!useMockSpotify
             && string.IsNullOrWhiteSpace(envClientId)
-            && string.IsNullOrWhiteSpace(envClientSecret)
             && !resetEncryptedStoreRequested)
         {
             storedSecrets = secretStore.TryLoad();
         }
 
         string clientId;
-        string clientSecret;
 
         if (useMockSpotify)
         {
-            // In quick/mock mode we never prompt for OAuth secrets (or read/write the encrypted store).
+            // Quick/mock mode never prompts for OAuth and never reads/writes the
+            // encrypted store.
             clientId = string.Empty;
-            clientSecret = string.Empty;
         }
         else
         {
@@ -135,31 +163,25 @@ public static class ConsoleLaunchBootstrap
                 envClientId,
                 storedSecrets?.ClientId,
                 configuration["Spotify:ClientId"]) ?? string.Empty;
-            clientSecret = FirstNonEmpty(
-                envClientSecret,
-                storedSecrets?.ClientSecret,
-                configuration["Spotify:ClientSecret"]) ?? string.Empty;
         }
 
         var promptedForCredentials = false;
         var savedToEncryptedStore = false;
         var loadedFromEncryptedStore = !useMockSpotify && storedSecrets is not null;
 
-        var shouldPromptForSecrets = isInteractiveConsole && (
+        var shouldPromptForClientId = isInteractiveConsole && (
             resetEncryptedStoreRequested ||
-            string.IsNullOrWhiteSpace(clientId) ||
-            string.IsNullOrWhiteSpace(clientSecret))
+            string.IsNullOrWhiteSpace(clientId))
             && !useMockSpotify;
 
-        if (shouldPromptForSecrets)
+        if (shouldPromptForClientId)
         {
             clientId = prompter.ReadValue("Spotify Client ID") ?? string.Empty;
-            clientSecret = prompter.ReadSecret("Spotify Client Secret") ?? string.Empty;
-            promptedForCredentials = !string.IsNullOrWhiteSpace(clientId) || !string.IsNullOrWhiteSpace(clientSecret);
+            promptedForCredentials = !string.IsNullOrWhiteSpace(clientId);
 
-            if (!string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret))
+            if (!string.IsNullOrWhiteSpace(clientId))
             {
-                secretStore.Save(new SpotifyLocalSecrets(clientId, clientSecret));
+                secretStore.Save(new SpotifyLocalSecrets(clientId));
                 savedToEncryptedStore = true;
                 loadedFromEncryptedStore = false;
             }
@@ -186,23 +208,19 @@ public static class ConsoleLaunchBootstrap
             overrides["Spotify:ClientId"] = clientId;
         }
 
-        if (!useMockSpotify && !string.IsNullOrWhiteSpace(clientSecret))
-        {
-            overrides["Spotify:ClientSecret"] = clientSecret;
-        }
-
         return new ConsoleLaunchSettings(
             GsiBaseUrl: gsiBaseUrl,
             RedirectUri: redirectUri,
             IsQuickLaunch: isQuickLaunch,
             SkipCs2Setup: skipCs2Setup,
             SkipSmartTrackWarmup: skipSmartTrackWarmup,
-            HasSpotifyCredentials: !string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret),
+            HasSpotifyCredentials: !string.IsNullOrWhiteSpace(clientId),
             PromptedForCredentials: promptedForCredentials,
             LoadedFromEncryptedStore: loadedFromEncryptedStore,
             SavedToEncryptedStore: savedToEncryptedStore,
             ClearedEncryptedStore: clearedEncryptedStore,
             ResetEncryptedStoreRequested: resetEncryptedStoreRequested,
+            LegacyClientSecretEnvVarPresent: legacyClientSecretEnvVarPresent,
             EncryptedStorePath: secretStore.FilePath,
             ConfigurationOverrides: overrides);
     }

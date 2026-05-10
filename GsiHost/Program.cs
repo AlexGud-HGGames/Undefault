@@ -22,6 +22,15 @@ var resolvedRuntime = RuntimeOptions.From(builder.Configuration);
 
 builder.Services.AddSingleton<GsiSnapshotMapper>();
 builder.Services.AddSingleton<IGameAdapter<GsiPayloadDto>, Cs2GameAdapter>();
+// Per-title routing registry (UND-40 / docs/multi-adapter-routing.md). Today only CS2 is
+// registered; adding a second title is a new registration + a new typed endpoint, no
+// change to CS2 wiring.
+builder.Services.AddSingleton(new GameAdapterRegistration(
+    TitleId: "cs2",
+    AppId: 730,
+    EndpointPath: "/gsi",
+    Description: "Counter-Strike 2 Game State Integration"));
+builder.Services.AddSingleton<IGameAdapterRouter, GameAdapterRouter>();
 builder.Services.AddSingleton<SnapshotDiffer>();
 builder.Services.AddSingleton<EventDetector>(sp =>
     new EventDetector(sp.GetRequiredService<IOptions<EventDetectorOptions>>().Value));
@@ -83,6 +92,14 @@ builder.Services.Configure<MusicOrchestrationOptions>(
     builder.Configuration.GetSection(MusicOrchestrationOptions.SectionName));
 
 var app = builder.Build();
+
+if (consoleLaunchSettings.LegacyClientSecretEnvVarPresent)
+{
+    // UND-47: emit a one-time DEBUG line so testers know the env var is no longer
+    // needed. The value itself is never logged.
+    app.Logger.LogDebug(
+        "CLIENT_SECRET environment variable is set but is ignored — Spotify OAuth uses PKCE and does not require a client secret.");
+}
 
 if (!consoleLaunchSettings.SkipCs2Setup)
 {
@@ -247,18 +264,20 @@ app.MapGet("/spotify/authorize", (IServiceProvider services) =>
 
 app.MapGet("/callback", async (
     string code,
+    string? state,
     IServiceProvider services,
     CancellationToken cancellationToken) =>
 {
-    return await HandleSpotifyCallbackAsync(code, services, cancellationToken);
+    return await HandleSpotifyCallbackAsync(code, state, services, cancellationToken);
 });
 
 app.MapGet("/spotify/callback", async (
     string code,
+    string? state,
     IServiceProvider services,
     CancellationToken cancellationToken) =>
 {
-    return await HandleSpotifyCallbackAsync(code, services, cancellationToken);
+    return await HandleSpotifyCallbackAsync(code, state, services, cancellationToken);
 });
 
 // Debug-only surface for the shadow facade; intentionally mapped in both runtime modes.
@@ -269,6 +288,11 @@ app.MapGet("/diagnostics/music-shadow", (IShadowMusicSnapshotSink sink) =>
         latest = sink.Latest,
         recent = sink.Recent()
     });
+});
+
+app.MapGet("/diagnostics/adapters", (IGameAdapterRouter router) =>
+{
+    return Results.Ok(new { adapters = router.Registrations });
 });
 
 // AppStateService subscribes to GsiProcessingService.Processed in its ctor. /gsi does not
@@ -334,13 +358,20 @@ static string? LogSpotifyAuthorizationUrl(WebApplication app)
 
     if (!oauthService.HasClientCredentials)
     {
-        app.Logger.LogWarning("Spotify OAuth credentials not found. Provide them in the console once, or set CLIENT_ID and CLIENT_SECRET.");
+        // UND-47: PKCE flow needs only the public client_id. CLIENT_SECRET is no longer
+        // read or required.
+        app.Logger.LogWarning("Spotify CLIENT_ID not configured. Provide it in the console once, or set the CLIENT_ID environment variable.");
         return null;
     }
 
     var authorizationUrl = oauthService.GetAuthorizationUrl();
+    // The authorization URL embeds the public client_id and a per-attempt PKCE
+    // code_challenge. We surface it on the console so a tester can copy/paste, but
+    // we deliberately do NOT pass it through the structured logger — that keeps
+    // client_id out of any captured log file (UND-47 compliance §"Logs scrub
+    // credentials").
     Console.WriteLine($"Spotify authorization URL: {authorizationUrl}");
-    app.Logger.LogInformation("Spotify authorization URL: {AuthorizationUrl}", authorizationUrl);
+    app.Logger.LogInformation("Spotify authorization URL ready (printed to console).");
     return authorizationUrl;
 }
 
@@ -420,12 +451,16 @@ static async Task WriteConsoleStartupChecklistAsync(
     Console.WriteLine("UndefaultIt console startup");
     Console.WriteLine($"- Quick launch mode: {(consoleLaunchSettings.IsQuickLaunch ? "yes" : "no")}");
     Console.WriteLine($"- Spotify mode: {(consoleLaunchSettings.ConfigurationOverrides.TryGetValue("UseMockSpotify", out var useMock) && string.Equals(useMock, "true", StringComparison.OrdinalIgnoreCase) ? "mock" : "real")}");
-    Console.WriteLine($"- Spotify credentials: {(consoleLaunchSettings.HasSpotifyCredentials ? "ready" : "missing")}");
-    Console.WriteLine($"- Prompted for credentials this run: {(consoleLaunchSettings.PromptedForCredentials ? "yes" : "no")}");
+    Console.WriteLine($"- Spotify CLIENT_ID: {(consoleLaunchSettings.HasSpotifyCredentials ? "ready" : "missing")} (PKCE flow — no client_secret used)");
+    Console.WriteLine($"- Prompted for client id this run: {(consoleLaunchSettings.PromptedForCredentials ? "yes" : "no")}");
     Console.WriteLine($"- Encrypted Spotify secret store: {consoleLaunchSettings.EncryptedStorePath}");
-    Console.WriteLine($"- Loaded credentials from encrypted store: {(consoleLaunchSettings.LoadedFromEncryptedStore ? "yes" : "no")}");
-    Console.WriteLine($"- Saved credentials to encrypted store this run: {(consoleLaunchSettings.SavedToEncryptedStore ? "yes" : "no")}");
+    Console.WriteLine($"- Loaded client id from encrypted store: {(consoleLaunchSettings.LoadedFromEncryptedStore ? "yes" : "no")}");
+    Console.WriteLine($"- Saved client id to encrypted store this run: {(consoleLaunchSettings.SavedToEncryptedStore ? "yes" : "no")}");
     Console.WriteLine($"- Cleared encrypted store this run: {(consoleLaunchSettings.ClearedEncryptedStore ? "yes" : "no")}");
+    if (consoleLaunchSettings.LegacyClientSecretEnvVarPresent)
+    {
+        Console.WriteLine("- CLIENT_SECRET environment variable detected: ignored (PKCE flow does not use a client secret).");
+    }
     Console.WriteLine($"- Spotify redirect URI to register: {consoleLaunchSettings.RedirectUri}");
     Console.WriteLine($"- Spotify authorization URL: {authorizationUrl ?? "unavailable until credentials are provided"}");
     Console.WriteLine($"- CS2 setup: {(consoleLaunchSettings.SkipCs2Setup ? "skipped" : "attempted")}");
@@ -438,7 +473,8 @@ static async Task WriteConsoleStartupChecklistAsync(
     Console.WriteLine($"- Smart Track Start file: {smartTrackStartService.FilePath}");
     Console.WriteLine($"- Spotify authenticated: {(spotifyAuthenticated ? "yes" : "no")}");
     Console.WriteLine("- Spotify playback control requires Premium and an active playback device.");
-    Console.WriteLine("- Use --reset-spotify-secrets to overwrite the saved secrets without printing them.");
+    Console.WriteLine("- Use --reset-spotify-secrets to overwrite the saved client id without printing it.");
+    Console.WriteLine("- Use --clear-spotify-secrets to wipe the encrypted store. With PKCE there is no client_secret to clear; this only removes the cached client id.");
     Console.WriteLine("- Edit control-profiles.json for pause/resume/duck behavior.");
     Console.WriteLine("- Edit smart-track-starts.json to configure optional non-zero track starts for spotify.profile playback.");
     Console.WriteLine("- Open /spotify/status, /setup/cs2/status, or /control-profiles for diagnostics.");
@@ -452,6 +488,7 @@ static string FormatSuffix(string? value)
 
 static async Task<IResult> HandleSpotifyCallbackAsync(
     string code,
+    string? state,
     IServiceProvider services,
     CancellationToken cancellationToken)
 {
@@ -469,7 +506,7 @@ static async Task<IResult> HandleSpotifyCallbackAsync(
 
     try
     {
-        var result = await oauthService.ExchangeCodeForTokenAsync(code, cancellationToken);
+        var result = await oauthService.ExchangeCodeForTokenAsync(code, state, cancellationToken);
         await tokenStorage.SaveTokensAsync(result.AccessToken, result.RefreshToken, result.ExpiresAt, cancellationToken);
         var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("SpotifyOAuth");
         logger.LogInformation("Spotify connected. Access token stored in memory until the process exits.");

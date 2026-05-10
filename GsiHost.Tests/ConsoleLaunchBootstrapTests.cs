@@ -9,15 +9,16 @@ namespace GsiHost.Tests;
 public sealed class ConsoleLaunchBootstrapTests
 {
     [Fact]
-    public void Prepare_UsesExistingCredentialsWithoutPrompting_AndForcesRealSpotify()
+    public void Prepare_UsesExistingClientIdWithoutPrompting_AndForcesRealSpotify()
     {
         RunWithoutSpotifyEnvVars(() =>
         {
+            // UND-47: PKCE flow has no client_secret. A configured client_id alone is
+            // sufficient to skip prompting.
             var configuration = BuildConfiguration(new Dictionary<string, string?>
             {
                 ["UseMockSpotify"] = "true",
                 ["Spotify:ClientId"] = "configured-client-id",
-                ["Spotify:ClientSecret"] = "configured-client-secret",
                 ["Spotify:RedirectUri"] = "http://127.0.0.1:5292/callback",
                 ["Gsi:Url"] = "http://127.0.0.1:5292"
             });
@@ -35,6 +36,8 @@ public sealed class ConsoleLaunchBootstrapTests
             settings.PromptedForCredentials.Should().BeFalse();
             settings.ConfigurationOverrides["UseMockSpotify"].Should().Be("false");
             settings.LoadedFromEncryptedStore.Should().BeFalse();
+            settings.ConfigurationOverrides.ContainsKey("Spotify:ClientSecret").Should().BeFalse(
+                "PKCE flow no longer carries a client_secret");
             prompter.ValuePrompts.Should().Be(0);
             prompter.SecretPrompts.Should().Be(0);
         });
@@ -65,7 +68,7 @@ public sealed class ConsoleLaunchBootstrapTests
     }
 
     [Fact]
-    public void Prepare_PromptsForMissingCredentials_WhenInteractive()
+    public void Prepare_PromptsForMissingClientId_WhenInteractive_AndDoesNotAskForClientSecret()
     {
         RunWithoutSpotifyEnvVars(() =>
         {
@@ -73,7 +76,7 @@ public sealed class ConsoleLaunchBootstrapTests
             {
                 ["Gsi:Url"] = "http://127.0.0.1:5292"
             });
-            var prompter = new FakeConsoleCredentialPrompter("prompted-client-id", "prompted-client-secret");
+            var prompter = new FakeConsoleCredentialPrompter("prompted-client-id");
             var store = new FakeSpotifySecretStore();
 
             var settings = ConsoleLaunchBootstrap.Prepare(
@@ -87,15 +90,17 @@ public sealed class ConsoleLaunchBootstrapTests
             settings.PromptedForCredentials.Should().BeTrue();
             settings.SavedToEncryptedStore.Should().BeTrue();
             settings.ConfigurationOverrides["Spotify:ClientId"].Should().Be("prompted-client-id");
-            settings.ConfigurationOverrides["Spotify:ClientSecret"].Should().Be("prompted-client-secret");
-            store.SavedSecrets.Should().BeEquivalentTo(new SpotifyLocalSecrets("prompted-client-id", "prompted-client-secret"));
+            settings.ConfigurationOverrides.ContainsKey("Spotify:ClientSecret").Should().BeFalse(
+                "PKCE flow has no client_secret");
+            store.SavedSecrets.Should().BeEquivalentTo(new SpotifyLocalSecrets("prompted-client-id"));
             prompter.ValuePrompts.Should().Be(1);
-            prompter.SecretPrompts.Should().Be(1);
+            prompter.SecretPrompts.Should().Be(0,
+                "the client_secret prompt is removed in the PKCE flow");
         });
     }
 
     [Fact]
-    public void Prepare_LoadsSecretsFromEncryptedStore_WithoutPrompting()
+    public void Prepare_LoadsClientIdFromEncryptedStore_WithoutPrompting()
     {
         RunWithoutSpotifyEnvVars(() =>
         {
@@ -105,7 +110,7 @@ public sealed class ConsoleLaunchBootstrapTests
             });
             var store = new FakeSpotifySecretStore
             {
-                StoredSecrets = new SpotifyLocalSecrets("stored-client-id", "stored-client-secret")
+                StoredSecrets = new SpotifyLocalSecrets("stored-client-id")
             };
 
             var settings = ConsoleLaunchBootstrap.Prepare(
@@ -119,7 +124,7 @@ public sealed class ConsoleLaunchBootstrapTests
             settings.LoadedFromEncryptedStore.Should().BeTrue();
             settings.PromptedForCredentials.Should().BeFalse();
             settings.ConfigurationOverrides["Spotify:ClientId"].Should().Be("stored-client-id");
-            settings.ConfigurationOverrides["Spotify:ClientSecret"].Should().Be("stored-client-secret");
+            settings.ConfigurationOverrides.ContainsKey("Spotify:ClientSecret").Should().BeFalse();
         });
     }
 
@@ -133,7 +138,7 @@ public sealed class ConsoleLaunchBootstrapTests
                 ["Gsi:Url"] = "http://127.0.0.1:5292"
             });
 
-            var prompter = new FakeConsoleCredentialPrompter("prompted-client-id", "prompted-client-secret");
+            var prompter = new FakeConsoleCredentialPrompter("prompted-client-id");
             var store = new FakeSpotifySecretStore();
 
             var settings = ConsoleLaunchBootstrap.Prepare(
@@ -199,9 +204,9 @@ public sealed class ConsoleLaunchBootstrapTests
             });
             var store = new FakeSpotifySecretStore
             {
-                StoredSecrets = new SpotifyLocalSecrets("old-client-id", "old-client-secret")
+                StoredSecrets = new SpotifyLocalSecrets("old-client-id")
             };
-            var prompter = new FakeConsoleCredentialPrompter("new-client-id", "new-client-secret");
+            var prompter = new FakeConsoleCredentialPrompter("new-client-id");
 
             var settings = ConsoleLaunchBootstrap.Prepare(
                 configuration,
@@ -213,7 +218,74 @@ public sealed class ConsoleLaunchBootstrapTests
             settings.ResetEncryptedStoreRequested.Should().BeTrue();
             settings.SavedToEncryptedStore.Should().BeTrue();
             settings.LoadedFromEncryptedStore.Should().BeFalse();
-            store.SavedSecrets.Should().BeEquivalentTo(new SpotifyLocalSecrets("new-client-id", "new-client-secret"));
+            store.SavedSecrets.Should().BeEquivalentTo(new SpotifyLocalSecrets("new-client-id"));
+        });
+    }
+
+    [Fact]
+    public void Prepare_ClearSpotifySecretsFlag_DeletesEncryptedStore_AndDoesNotThrow_WhenStoreIsEmpty()
+    {
+        RunWithoutSpotifyEnvVars(() =>
+        {
+            // UND-47: with PKCE there may be nothing to clear. The flag still wipes the
+            // store on demand without erroring out.
+            var configuration = BuildConfiguration(new Dictionary<string, string?>
+            {
+                ["Gsi:Url"] = "http://127.0.0.1:5292"
+            });
+            var emptyStore = new FakeSpotifySecretStore();
+
+            var settingsEmpty = ConsoleLaunchBootstrap.Prepare(
+                configuration,
+                new[] { "--clear-spotify-secrets" },
+                isInteractiveConsole: false,
+                new FakeConsoleCredentialPrompter(),
+                emptyStore);
+
+            settingsEmpty.ClearedEncryptedStore.Should().BeFalse(
+                "an empty store has nothing to clear, but the flag must not throw");
+
+            var populatedStore = new FakeSpotifySecretStore
+            {
+                StoredSecrets = new SpotifyLocalSecrets("cached-client-id")
+            };
+
+            var settingsPopulated = ConsoleLaunchBootstrap.Prepare(
+                configuration,
+                new[] { "--clear-spotify-secrets" },
+                isInteractiveConsole: false,
+                new FakeConsoleCredentialPrompter(),
+                populatedStore);
+
+            settingsPopulated.ClearedEncryptedStore.Should().BeTrue();
+            populatedStore.StoredSecrets.Should().BeNull();
+        });
+    }
+
+    [Fact]
+    public void Prepare_LegacyClientSecretEnvVarPresent_IsSurfaced_ButNotConsumed()
+    {
+        RunWithoutSpotifyEnvVars(() =>
+        {
+            Environment.SetEnvironmentVariable("CLIENT_SECRET", "legacy-secret-should-be-ignored");
+
+            var configuration = BuildConfiguration(new Dictionary<string, string?>
+            {
+                ["Spotify:ClientId"] = "configured-client-id",
+                ["Gsi:Url"] = "http://127.0.0.1:5292"
+            });
+            var store = new FakeSpotifySecretStore();
+
+            var settings = ConsoleLaunchBootstrap.Prepare(
+                configuration,
+                Array.Empty<string>(),
+                isInteractiveConsole: false,
+                new FakeConsoleCredentialPrompter(),
+                store);
+
+            settings.LegacyClientSecretEnvVarPresent.Should().BeTrue();
+            settings.HasSpotifyCredentials.Should().BeTrue("client_id alone is enough under PKCE");
+            settings.ConfigurationOverrides.ContainsKey("Spotify:ClientSecret").Should().BeFalse();
         });
     }
 
@@ -245,12 +317,14 @@ public sealed class ConsoleLaunchBootstrapTests
     private sealed class FakeConsoleCredentialPrompter : IConsoleCredentialPrompter
     {
         private readonly string? _value;
-        private readonly string? _secret;
+        // Probe-only — UND-47 should never call ReadSecret. Kept as a counter so the
+        // PKCE tests can assert that fact.
+        private readonly string? _legacySecret;
 
-        public FakeConsoleCredentialPrompter(string? value = null, string? secret = null)
+        public FakeConsoleCredentialPrompter(string? value = null, string? legacySecret = null)
         {
             _value = value;
-            _secret = secret;
+            _legacySecret = legacySecret;
         }
 
         public int ValuePrompts { get; private set; }
@@ -266,7 +340,7 @@ public sealed class ConsoleLaunchBootstrapTests
         public string? ReadSecret(string prompt)
         {
             SecretPrompts++;
-            return _secret;
+            return _legacySecret;
         }
     }
 

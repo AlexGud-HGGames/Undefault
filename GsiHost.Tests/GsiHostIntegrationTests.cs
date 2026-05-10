@@ -726,6 +726,24 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
+    public async Task AdapterDiagnostics_ListsRegisteredCs2Adapter()
+    {
+        using var host = CreateTestHost(new FakeSpotifyClient());
+
+        var body = await host.Client.GetStringAsync("/diagnostics/adapters");
+
+        using var doc = JsonDocument.Parse(body);
+        var adapters = doc.RootElement.GetProperty("adapters");
+        adapters.GetArrayLength().Should().Be(1);
+
+        var cs2 = adapters[0];
+        cs2.GetProperty("titleId").GetString().Should().Be("cs2");
+        cs2.GetProperty("appId").GetInt32().Should().Be(730);
+        cs2.GetProperty("endpointPath").GetString().Should().Be("/gsi");
+        cs2.GetProperty("description").GetString().Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
     public void Cs2GameAdapter_PreservesGsiSnapshotMapperOutput()
     {
         var mapper = CreateSnapshotMapper();
@@ -995,7 +1013,6 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
           "AllowedHosts": "*",
           "Spotify": {
             "ClientId": "",
-            "ClientSecret": "",
             "RedirectUri": "http://127.0.0.1:5292/callback",
             "Scopes": [
               "user-modify-playback-state",

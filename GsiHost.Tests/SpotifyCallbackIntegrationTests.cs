@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Web;
 using Core.Spotify;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
@@ -21,7 +22,7 @@ public sealed class SpotifyCallbackIntegrationTests : IClassFixture<WebApplicati
     }
 
     [Fact]
-    public async Task Callback_StoresTokenInMemory_AndReturnsHtml()
+    public async Task Callback_StoresTokenInMemory_AndReturnsHtml_AndUsesPkceWireFormat()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "UndefaultIt.Tests", Guid.NewGuid().ToString("N"));
         var cs2Root = Path.Combine(tempRoot, "Counter-Strike Global Offensive");
@@ -32,6 +33,8 @@ public sealed class SpotifyCallbackIntegrationTests : IClassFixture<WebApplicati
         var previousOverride = Environment.GetEnvironmentVariable("UNDEFAULTIT_CS2_PATH");
         Environment.SetEnvironmentVariable("UNDEFAULTIT_CS2_PATH", cs2Root);
 
+        var fakeFactory = new FakeHttpClientFactory();
+
         try
         {
             using var customizedFactory = _factory.WithWebHostBuilder(builder =>
@@ -41,11 +44,10 @@ public sealed class SpotifyCallbackIntegrationTests : IClassFixture<WebApplicati
                 {
                     services.AddSingleton<SpotifyOAuthService>(_ =>
                         new SpotifyOAuthService(
-                            new FakeHttpClientFactory(),
+                            fakeFactory,
                             Options.Create(new SpotifyClientOptions
                             {
                                 ClientId = "spotify-client-id",
-                                ClientSecret = "spotify-client-secret",
                                 RedirectUri = "http://127.0.0.1:5292/callback",
                                 Scopes = new[] { "user-modify-playback-state", "user-read-playback-state" }
                             }),
@@ -54,7 +56,13 @@ public sealed class SpotifyCallbackIntegrationTests : IClassFixture<WebApplicati
             });
 
             using var client = customizedFactory.CreateClient();
-            var response = await client.GetAsync("/callback?code=test-authorization-code");
+
+            // Pre-populate a PKCE verifier for the callback's state value.
+            var oauthService = customizedFactory.Services.GetRequiredService<SpotifyOAuthService>();
+            const string state = "round-trip-state";
+            _ = oauthService.GetAuthorizationUrl(state);
+
+            var response = await client.GetAsync($"/callback?code=test-authorization-code&state={state}");
 
             response.StatusCode.Should().Be(HttpStatusCode.OK);
             response.Content.Headers.ContentType?.MediaType.Should().Be("text/html");
@@ -63,6 +71,14 @@ public sealed class SpotifyCallbackIntegrationTests : IClassFixture<WebApplicati
 
             var tokenStorage = customizedFactory.Services.GetRequiredService<ITokenStorage>();
             (await tokenStorage.GetAccessTokenAsync()).Should().Be("test-access-token");
+
+            // PKCE assertions on the captured wire request.
+            fakeFactory.Handler.LastRequest.Should().NotBeNull();
+            fakeFactory.Handler.LastRequest!.Headers.Authorization.Should().BeNull(
+                "PKCE flow drops the Authorization: Basic header");
+            fakeFactory.Handler.LastFormBody!["client_id"].Should().Be("spotify-client-id");
+            fakeFactory.Handler.LastFormBody.Should().ContainKey("code_verifier");
+            fakeFactory.Handler.LastFormBody["code_verifier"].Should().NotBeNullOrEmpty();
         }
         finally
         {
@@ -88,7 +104,6 @@ public sealed class SpotifyCallbackIntegrationTests : IClassFixture<WebApplicati
           "AllowedHosts": "*",
           "Spotify": {
             "ClientId": "spotify-client-id",
-            "ClientSecret": "spotify-client-secret",
             "RedirectUri": "http://127.0.0.1:5292/callback",
             "Scopes": [
               "user-modify-playback-state",
@@ -107,20 +122,39 @@ public sealed class SpotifyCallbackIntegrationTests : IClassFixture<WebApplicati
 
     private sealed class FakeHttpClientFactory : IHttpClientFactory
     {
+        public FakeTokenHandler Handler { get; } = new();
+
         public HttpClient CreateClient(string name)
         {
-            return new HttpClient(new FakeTokenHandler());
+            return new HttpClient(Handler, disposeHandler: false);
         }
     }
 
     private sealed class FakeTokenHandler : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            request.RequestUri!.ToString().Should().Be("https://accounts.spotify.com/api/token");
-            request.Headers.Authorization.Should().NotBeNull();
+        public HttpRequestMessage? LastRequest { get; private set; }
+        public IReadOnlyDictionary<string, string>? LastFormBody { get; private set; }
 
-            const string body = """
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequest = request;
+            request.RequestUri!.ToString().Should().Be("https://accounts.spotify.com/api/token");
+
+            if (request.Content is not null)
+            {
+                var requestBody = await request.Content.ReadAsStringAsync(cancellationToken);
+                var parsed = HttpUtility.ParseQueryString(requestBody);
+                var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (string? key in parsed)
+                {
+                    if (key is null) continue;
+                    dict[key] = parsed[key] ?? string.Empty;
+                }
+
+                LastFormBody = dict;
+            }
+
+            const string responseBody = """
             {
               "access_token": "test-access-token",
               "token_type": "Bearer",
@@ -130,10 +164,10 @@ public sealed class SpotifyCallbackIntegrationTests : IClassFixture<WebApplicati
             }
             """;
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(body, Encoding.UTF8, "application/json")
-            });
+                Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
+            };
         }
     }
 }
