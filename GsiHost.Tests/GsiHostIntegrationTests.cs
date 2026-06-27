@@ -13,6 +13,7 @@ using GsiHost.Dtos;
 using GsiHost.Mapping;
 using GsiHost.Mapping.Modules;
 using GsiHost.Services;
+using GsiHost.Tooling.Timeline;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -807,6 +808,290 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         hostedServices.OfType<WindowsHotkeyService>().Should().HaveCount(1);
     }
 
+    [Fact]
+    public async Task PlaybackTransition_StateChangingPause_RecordsPausedInTimelineAndJsonl()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 70,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(5000, 100, round: 1, phase: "live"));
+
+        var response = await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "custom:music_pause", action = "pause" });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        spotifyClient.PauseCalls.Should().Be(1);
+
+        var inMemory = await GetTimelineEntriesAsync(host.Client);
+        var paused = inMemory.SingleOrDefault(e =>
+            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Paused);
+        paused.Should().NotBeNull();
+        paused!.TimestampUtc.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(10));
+
+        var onDisk = ReadTimelineEntriesFromDisk(host.TempRoot);
+        onDisk.Should().Contain(e =>
+            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Paused);
+    }
+
+    [Fact]
+    public async Task PlaybackTransition_StateChangingResume_RecordsResumedInTimelineAndJsonl()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: false,
+                VolumePercent: 70,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(5050, 100, round: 2, phase: "live"));
+
+        var response = await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "custom:music_resume", action = "resume" });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        spotifyClient.ResumeCalls.Should().Be(1);
+
+        var inMemory = await GetTimelineEntriesAsync(host.Client);
+        var resumed = inMemory.SingleOrDefault(e =>
+            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Resumed);
+        resumed.Should().NotBeNull();
+        resumed!.TimestampUtc.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(10));
+
+        var onDisk = ReadTimelineEntriesFromDisk(host.TempRoot);
+        onDisk.Should().Contain(e =>
+            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Resumed);
+    }
+
+    [Fact]
+    public async Task PlaybackTransition_NoOpPause_RecordsNoPlaybackTransition()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: false,
+                VolumePercent: 70,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(5100, 100, round: 3, phase: "live"));
+
+        var response = await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "custom:music_pause", action = "pause" });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // No state change -> no Spotify pause, no playback transition recorded.
+        spotifyClient.PauseCalls.Should().Be(0);
+
+        var inMemory = await GetTimelineEntriesAsync(host.Client);
+        inMemory.Any(e => e.Source == TimelineSources.Playback)
+            .Should()
+            .BeFalse("a no-op pause must not be recorded as a state transition");
+
+        var onDisk = ReadTimelineEntriesFromDisk(host.TempRoot);
+        onDisk.Any(e => e.Source == TimelineSources.Playback)
+            .Should()
+            .BeFalse("a no-op pause must not be persisted to JSONL");
+    }
+
+    [Fact]
+    public async Task PlaybackTransition_NoOpResume_RecordsNoPlaybackTransition()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 70,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(5150, 100, round: 4, phase: "live"));
+
+        var response = await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "custom:music_resume", action = "resume" });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        spotifyClient.ResumeCalls.Should().Be(0);
+
+        var inMemory = await GetTimelineEntriesAsync(host.Client);
+        inMemory.Any(e => e.Source == TimelineSources.Playback)
+            .Should()
+            .BeFalse("a no-op resume must not be recorded as a state transition");
+
+        var onDisk = ReadTimelineEntriesFromDisk(host.TempRoot);
+        onDisk.Any(e => e.Source == TimelineSources.Playback)
+            .Should()
+            .BeFalse("a no-op resume must not be persisted to JSONL");
+    }
+
+    [Fact]
+    public async Task PlaybackTransition_ResetStartsNewJsonlSessionFile()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 70,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(5200, 100, round: 5, phase: "live"));
+        await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "custom:music_pause", action = "pause" });
+        spotifyClient.PauseCalls.Should().Be(1);
+
+        var filesBefore = GetSessionFiles(host.TempRoot);
+        filesBefore.Should().HaveCountGreaterThanOrEqualTo(1);
+
+        var inMemoryBefore = await GetTimelineEntriesAsync(host.Client);
+        inMemoryBefore.Should().Contain(e =>
+            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Paused);
+
+        var resetResponse = await host.Client.PostAsync("/gsi/reset", content: null);
+        resetResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var inMemoryAfterReset = await GetTimelineEntriesAsync(host.Client);
+        inMemoryAfterReset.Should().BeEmpty("reset clears the in-memory timeline");
+
+        // Flip playback back to playing so the next pause is a real state change (the fake client
+        // is a singleton whose state survived the first pause).
+        spotifyClient.CurrentPlayback = spotifyClient.CurrentPlayback with { IsPlaying = true };
+
+        await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "custom:music_pause", action = "pause" });
+        spotifyClient.PauseCalls.Should().Be(2);
+
+        var filesAfter = GetSessionFiles(host.TempRoot);
+        var newSessionFile = filesAfter.Except(filesBefore, StringComparer.Ordinal).ToList();
+        newSessionFile.Should().HaveCount(1, "reset must start a new JSONL session file");
+
+        var inMemoryAfter = await GetTimelineEntriesAsync(host.Client);
+        inMemoryAfter.Should().Contain(e =>
+            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Paused);
+
+        var newFileEntries = ReadTimelineEntriesFromFile(newSessionFile[0]);
+        newFileEntries.Should().Contain(e =>
+            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Paused);
+    }
+
+    [Fact]
+    public async Task PlaybackTransition_JsonlRoundTripsToTimelineEntry_AndMatchesInMemory()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 70,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(5300, 100, round: 6, phase: "live"));
+        await host.Client.PostAsJsonAsync(
+            "/user-actions",
+            new { eventKey = "custom:music_pause", action = "pause" });
+
+        var inMemory = await GetTimelineEntriesAsync(host.Client);
+        var onDisk = ReadTimelineEntriesFromDisk(host.TempRoot);
+
+        inMemory.Should().NotBeEmpty();
+        onDisk.Should().NotBeEmpty();
+
+        // Every in-memory entry must round-trip from JSONL with identical core fields.
+        foreach (var entry in inMemory)
+        {
+            onDisk.Should().Contain(d =>
+                d.Sequence == entry.Sequence &&
+                d.Source == entry.Source &&
+                d.EventKey == entry.EventKey &&
+                d.TimestampUtc == entry.TimestampUtc,
+                $"in-memory entry #{entry.Sequence} ({entry.Source}/{entry.EventKey}) must round-trip from JSONL");
+        }
+
+        var paused = inMemory.Single(e =>
+            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Paused);
+        var pausedOnDisk = onDisk.Single(d => d.Sequence == paused.Sequence);
+        pausedOnDisk.Should().BeEquivalentTo(paused);
+    }
+
+    [Fact]
+    public async Task PlaybackTransition_ScenarioPlayback_DoesNotRecordPlaybackTransition()
+    {
+        var spotifyClient = new FakeSpotifyClient
+        {
+            Authenticated = true,
+            CurrentPlayback = new PlaybackState(
+                IsPlaying: true,
+                VolumePercent: 70,
+                Track: null,
+                DeviceId: "device",
+                DeviceName: "Desktop")
+        };
+        // Timeline enabled, but runtime is scenario_playback: the recorder must self-gate and
+        // persist nothing. /timeline is not mapped in scenario_playback, so inspect the service.
+        using var host = CreateTestHost(
+            spotifyClient,
+            appSettingsJson: BuildAppSettingsJson(
+                "http://127.0.0.1:5292",
+                runtimeMode: "scenario_playback",
+                enableTimeline: true));
+
+        var playback = host.Factory.Services.GetRequiredService<ISpotifyPlaybackControl>();
+        await playback.TryPauseAsync("gate-test", CancellationToken.None);
+
+        spotifyClient.PauseCalls.Should().Be(1);
+
+        var timeline = host.Factory.Services.GetRequiredService<TimelineCaptureService>();
+        var entries = timeline.GetRecentEntries();
+        entries.Any(e => e.Source == TimelineSources.Playback)
+            .Should()
+            .BeFalse("playback transitions must not be recorded in scenario_playback");
+    }
+
     private static object CreatePayload(long timestamp, int health, int? round = null, string? phase = null)
     {
         return new
@@ -989,6 +1274,54 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         {
             client.BaseAddress = new Uri(s + "/");
         }
+    }
+
+    private static readonly JsonSerializerOptions TimelineJsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static async Task<List<TimelineEntry>> GetTimelineEntriesAsync(HttpClient client)
+    {
+        var json = await client.GetStringAsync("/timeline");
+        return JsonSerializer.Deserialize<List<TimelineEntry>>(json, TimelineJsonOptions)
+            ?? new List<TimelineEntry>();
+    }
+
+    private static string[] GetSessionFiles(string tempRoot)
+    {
+        var directory = Path.Combine(tempRoot, "timeline");
+        return Directory.Exists(directory)
+            ? Directory.GetFiles(directory, "*.jsonl")
+            : Array.Empty<string>();
+    }
+
+    private static List<TimelineEntry> ReadTimelineEntriesFromDisk(string tempRoot)
+    {
+        var entries = new List<TimelineEntry>();
+        foreach (var file in GetSessionFiles(tempRoot))
+        {
+            entries.AddRange(ReadTimelineEntriesFromFile(file));
+        }
+
+        return entries;
+    }
+
+    private static List<TimelineEntry> ReadTimelineEntriesFromFile(string path)
+    {
+        var entries = new List<TimelineEntry>();
+        foreach (var line in File.ReadAllLines(path))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var entry = JsonSerializer.Deserialize<TimelineEntry>(line, TimelineJsonOptions);
+            if (entry is not null)
+            {
+                entries.Add(entry);
+            }
+        }
+
+        return entries;
     }
 
     private static string BuildAppSettingsJson(

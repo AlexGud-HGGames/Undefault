@@ -47,6 +47,7 @@ builder.Services.AddSingleton<IMusicOrchestrationFacade, ShadowMusicOrchestratio
 builder.Services.AddSingleton<IShadowMusicSnapshotSink, InMemoryShadowMusicSnapshotSink>();
 builder.Services.AddSingleton<GsiProcessingService>();
 builder.Services.AddSingleton<TimelineCaptureService>();
+builder.Services.AddSingleton<IPlaybackEventRecorder, PlaybackEventRecorder>();
 builder.Services.AddSingleton<UserActionService>();
 if (resolvedRuntime.IsIntentCapture)
 {

@@ -6,6 +6,19 @@ public static class TimelineSources
 {
     public const string Gsi = "gsi";
     public const string UserAction = "user_action";
+    public const string Playback = "playback";
+}
+
+/// <summary>
+/// Event keys for confirmed Spotify playback state transitions recorded to the timeline.
+/// </summary>
+public static class TimelinePlaybackEvents
+{
+    /// <summary>Playback transitioned from playing to paused.</summary>
+    public const string Paused = "playback_paused";
+
+    /// <summary>Playback transitioned from paused to playing.</summary>
+    public const string Resumed = "playback_resumed";
 }
 
 public static class TimelineOutcomeStatuses

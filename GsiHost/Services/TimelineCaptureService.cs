@@ -90,6 +90,31 @@ public sealed class TimelineCaptureService : IDisposable
             outcome);
     }
 
+    /// <summary>
+    /// Appends a confirmed Spotify playback state transition (source <see cref="TimelineSources.Playback"/>)
+    /// using the same in-memory ring and JSONL append path as GSI and user-action entries.
+    /// </summary>
+    /// <param name="eventKey">The playback transition event key (e.g. <see cref="TimelinePlaybackEvents.Paused"/>).</param>
+    /// <param name="timestampUtc">The UTC timestamp of the confirmed state transition.</param>
+    /// <param name="action">Optional action label; otherwise <see langword="null"/>.</param>
+    /// <param name="detail">Optional detail text; otherwise <see langword="null"/>.</param>
+    /// <returns>The appended <see cref="TimelineEntry"/>.</returns>
+    public TimelineEntry RecordPlaybackTransition(
+        string eventKey,
+        DateTimeOffset timestampUtc,
+        string? action = null,
+        string? detail = null)
+    {
+        return AppendEntry(
+            timestampUtc,
+            TimelineSources.Playback,
+            EventKeys.Normalize(eventKey),
+            action,
+            detail,
+            _latestContext,
+            outcome: null);
+    }
+
     public void Reset()
     {
         lock (_lock)
