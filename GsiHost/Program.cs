@@ -257,7 +257,7 @@ app.MapGet("/spotify/authorize", (IServiceProvider services) =>
         return Results.BadRequest("Spotify OAuth is unavailable in mock mode.");
     }
 
-    var state = Guid.NewGuid().ToString("N");
+    var state = SpotifyOAuthService.CreateState();
     var url = oauthService.GetAuthorizationUrl(state);
     return Results.Ok(new { url, state });
 });
@@ -364,7 +364,10 @@ static string? LogSpotifyAuthorizationUrl(WebApplication app)
         return null;
     }
 
-    var authorizationUrl = oauthService.GetAuthorizationUrl();
+    // CSRF state is mandatory even for the console flow: the callback rejects
+    // state-less requests, so a drive-by GET /callback cannot consume the pending
+    // PKCE verifier or complete a login it did not start.
+    var authorizationUrl = oauthService.GetAuthorizationUrl(SpotifyOAuthService.CreateState());
     // The authorization URL embeds the public client_id and a per-attempt PKCE
     // code_challenge. We surface it on the console so a tester can copy/paste, but
     // we deliberately do NOT pass it through the structured logger — that keeps
@@ -495,6 +498,14 @@ static async Task<IResult> HandleSpotifyCallbackAsync(
     if (string.IsNullOrWhiteSpace(code))
     {
         return Results.BadRequest("Missing authorization code.");
+    }
+
+    if (string.IsNullOrWhiteSpace(state))
+    {
+        // CSRF binding: every authorize URL we issue carries a state, so a
+        // state-less callback was not initiated by this host. Reject it before
+        // it can consume a pending PKCE verifier or trigger a token exchange.
+        return Results.BadRequest("Missing state parameter.");
     }
 
     var oauthService = services.GetService<SpotifyOAuthService>();

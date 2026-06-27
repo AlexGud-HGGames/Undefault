@@ -24,22 +24,39 @@ public sealed class SpotifyOAuthService
     // We sample 64 cryptographically-random bytes and base64url-no-pad them, which gives
     // an 86-char verifier — well inside the legal range and well above the 43 minimum.
     private const int CodeVerifierEntropyBytes = 64;
+    private const int StateEntropyBytes = 32;
+
+    // Spotify authorization codes are short-lived; an attempt older than this can never
+    // complete, so its verifier is evicted instead of accumulating for process lifetime.
+    private static readonly TimeSpan PendingAuthorizationTtl = TimeSpan.FromMinutes(10);
 
     private readonly SpotifyClientOptions _options;
     private readonly HttpClient _httpClient;
+    private readonly TimeProvider _timeProvider;
 
-    // Per-attempt verifier storage. Keyed by `state` when the caller supplies one, and
-    // by a fixed sentinel for stateless callers (legacy console flow). Verifiers are
-    // never persisted to disk, never logged, and are removed on consumption.
-    private readonly ConcurrentDictionary<string, string> _verifiersByState = new(StringComparer.Ordinal);
-    private const string StatelessSlot = "__stateless__";
+    // Per-attempt verifier storage, keyed by the mandatory `state` value. Verifiers are
+    // never persisted to disk, never logged, and are removed on consumption or expiry.
+    private readonly ConcurrentDictionary<string, PendingAuthorization> _verifiersByState = new(StringComparer.Ordinal);
 
     public SpotifyOAuthService(
         IHttpClientFactory httpClientFactory,
-        IOptions<SpotifyClientOptions> options)
+        IOptions<SpotifyClientOptions> options,
+        TimeProvider? timeProvider = null)
     {
         _options = options.Value;
         _httpClient = httpClientFactory.CreateClient("SpotifyOAuth");
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+
+    /// <summary>
+    /// Cryptographically-random CSRF <c>state</c> value for an authorization attempt.
+    /// Every authorize URL must carry one; the callback rejects requests without it.
+    /// </summary>
+    public static string CreateState()
+    {
+        var bytes = new byte[StateEntropyBytes];
+        RandomNumberGenerator.Fill(bytes);
+        return Base64UrlNoPad(bytes);
     }
 
     /// <summary>
@@ -51,8 +68,15 @@ public sealed class SpotifyOAuthService
 
     public string RedirectUri => GetRedirectUri();
 
-    public string GetAuthorizationUrl(string? state = null)
+    public string GetAuthorizationUrl(string state)
     {
+        if (string.IsNullOrWhiteSpace(state))
+        {
+            throw new ArgumentException(
+                "A non-empty CSRF state is required for every authorization attempt. Use SpotifyOAuthService.CreateState().",
+                nameof(state));
+        }
+
         var clientId = GetClientId();
         if (string.IsNullOrWhiteSpace(clientId))
         {
@@ -62,47 +86,50 @@ public sealed class SpotifyOAuthService
         var verifier = GenerateCodeVerifier();
         var challenge = ComputeCodeChallenge(verifier);
 
-        var slot = string.IsNullOrWhiteSpace(state) ? StatelessSlot : state!;
-        _verifiersByState[slot] = verifier;
+        EvictExpiredPendingAuthorizations();
+        _verifiersByState[state] = new PendingAuthorization(verifier, _timeProvider.GetUtcNow());
 
         var scopes = string.Join(" ", _options.Scopes);
         var redirectUri = Uri.EscapeDataString(GetRedirectUri());
 
-        var url = $"https://accounts.spotify.com/authorize?" +
-               $"client_id={clientId}" +
+        return $"https://accounts.spotify.com/authorize?" +
+               $"client_id={Uri.EscapeDataString(clientId)}" +
                $"&response_type=code" +
                $"&redirect_uri={redirectUri}" +
                $"&scope={Uri.EscapeDataString(scopes)}" +
                $"&code_challenge_method=S256" +
-               $"&code_challenge={challenge}";
+               $"&code_challenge={challenge}" +
+               $"&state={Uri.EscapeDataString(state)}";
+    }
 
-        if (!string.IsNullOrWhiteSpace(state))
+    public async Task<SpotifyAuthResult> ExchangeCodeForTokenAsync(string authorizationCode, string state, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(state))
         {
-            url += $"&state={Uri.EscapeDataString(state)}";
+            throw new ArgumentException(
+                "A non-empty CSRF state is required to complete an authorization attempt.",
+                nameof(state));
         }
 
-        return url;
-    }
-
-    public Task<SpotifyAuthResult> ExchangeCodeForTokenAsync(string authorizationCode, CancellationToken cancellationToken = default)
-    {
-        return ExchangeCodeForTokenAsync(authorizationCode, state: null, cancellationToken);
-    }
-
-    public async Task<SpotifyAuthResult> ExchangeCodeForTokenAsync(string authorizationCode, string? state, CancellationToken cancellationToken = default)
-    {
         var clientId = GetClientId();
         if (string.IsNullOrWhiteSpace(clientId))
         {
             throw new InvalidOperationException("Spotify CLIENT_ID is not configured.");
         }
 
-        var slot = string.IsNullOrWhiteSpace(state) ? StatelessSlot : state!;
-        if (!_verifiersByState.TryRemove(slot, out var verifier) || string.IsNullOrEmpty(verifier))
+        if (!_verifiersByState.TryRemove(state, out var pending) || string.IsNullOrEmpty(pending.Verifier))
         {
             throw new InvalidOperationException(
                 "PKCE code_verifier missing for this auth attempt. Call GetAuthorizationUrl first.");
         }
+
+        if (IsExpired(pending))
+        {
+            throw new InvalidOperationException(
+                "PKCE code_verifier expired for this auth attempt. Restart authorization via GetAuthorizationUrl.");
+        }
+
+        var verifier = pending.Verifier;
 
         var requestBody = new Dictionary<string, string>
         {
@@ -180,6 +207,23 @@ public sealed class SpotifyOAuthService
         );
     }
 
+    private void EvictExpiredPendingAuthorizations()
+    {
+        foreach (var entry in _verifiersByState)
+        {
+            if (IsExpired(entry.Value))
+            {
+                // Remove-if-equal: a concurrent re-authorize under the same state wins.
+                ((ICollection<KeyValuePair<string, PendingAuthorization>>)_verifiersByState).Remove(entry);
+            }
+        }
+    }
+
+    private bool IsExpired(PendingAuthorization pending)
+    {
+        return _timeProvider.GetUtcNow() - pending.CreatedAt > PendingAuthorizationTtl;
+    }
+
     private static string GenerateCodeVerifier()
     {
         var bytes = new byte[CodeVerifierEntropyBytes];
@@ -200,6 +244,8 @@ public sealed class SpotifyOAuthService
             .Replace('+', '-')
             .Replace('/', '_');
     }
+
+    private readonly record struct PendingAuthorization(string Verifier, DateTimeOffset CreatedAt);
 
     private sealed class TokenResponse
     {

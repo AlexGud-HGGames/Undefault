@@ -89,6 +89,62 @@ public sealed class SpotifyCallbackIntegrationTests : IClassFixture<WebApplicati
         }
     }
 
+    [Fact]
+    public async Task Callback_WithoutState_IsRejected_AndDoesNotCallTokenEndpoint()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "UndefaultIt.Tests", Guid.NewGuid().ToString("N"));
+        var cs2Root = Path.Combine(tempRoot, "Counter-Strike Global Offensive");
+        Directory.CreateDirectory(Path.Combine(cs2Root, "game", "csgo", "cfg"));
+        Directory.CreateDirectory(tempRoot);
+        await File.WriteAllTextAsync(Path.Combine(tempRoot, "appsettings.json"), BuildAppSettingsJson());
+
+        var previousOverride = Environment.GetEnvironmentVariable("UNDEFAULTIT_CS2_PATH");
+        Environment.SetEnvironmentVariable("UNDEFAULTIT_CS2_PATH", cs2Root);
+
+        var fakeFactory = new FakeHttpClientFactory();
+
+        try
+        {
+            using var customizedFactory = _factory.WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting(WebHostDefaults.ContentRootKey, tempRoot);
+                builder.ConfigureServices(services =>
+                {
+                    services.AddSingleton<SpotifyOAuthService>(_ =>
+                        new SpotifyOAuthService(
+                            fakeFactory,
+                            Options.Create(new SpotifyClientOptions
+                            {
+                                ClientId = "spotify-client-id",
+                                RedirectUri = "http://127.0.0.1:5292/callback",
+                                Scopes = new[] { "user-modify-playback-state", "user-read-playback-state" }
+                            })));
+                });
+            });
+
+            using var client = customizedFactory.CreateClient();
+
+            // A pending attempt exists, but the drive-by callback carries no state.
+            var oauthService = customizedFactory.Services.GetRequiredService<SpotifyOAuthService>();
+            _ = oauthService.GetAuthorizationUrl(SpotifyOAuthService.CreateState());
+
+            var response = await client.GetAsync("/callback?code=attacker-supplied-code");
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            fakeFactory.Handler.LastRequest.Should().BeNull(
+                "a state-less callback must not trigger an outbound token exchange");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("UNDEFAULTIT_CS2_PATH", previousOverride);
+
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     private static string BuildAppSettingsJson()
     {
         return """

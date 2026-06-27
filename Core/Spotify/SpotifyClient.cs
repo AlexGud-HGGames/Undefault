@@ -139,9 +139,9 @@ public sealed class SpotifyClient : ISpotifyClient
         return Task.FromResult(_oauthService.GetAuthorizationUrl(state));
     }
 
-    public async Task<SpotifyAuthResult> AuthenticateAsync(string authorizationCode, CancellationToken cancellationToken = default)
+    public async Task<SpotifyAuthResult> AuthenticateAsync(string authorizationCode, string state, CancellationToken cancellationToken = default)
     {
-        var result = await _oauthService.ExchangeCodeForTokenAsync(authorizationCode, cancellationToken);
+        var result = await _oauthService.ExchangeCodeForTokenAsync(authorizationCode, state, cancellationToken);
         await _tokenStorage.SaveTokensAsync(result.AccessToken, result.RefreshToken, result.ExpiresAt, cancellationToken);
         return result;
     }

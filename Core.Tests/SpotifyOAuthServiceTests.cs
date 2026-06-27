@@ -21,7 +21,7 @@ public sealed class SpotifyOAuthServiceTests
             Scopes = new[] { "user-modify-playback-state", "user-read-playback-state" }
         });
 
-        var url = service.GetAuthorizationUrl();
+        var url = service.GetAuthorizationUrl(SpotifyOAuthService.CreateState());
 
         url.Should().Contain("redirect_uri=http%3A%2F%2F127.0.0.1%3A5292%2Fcallback");
     }
@@ -35,7 +35,7 @@ public sealed class SpotifyOAuthServiceTests
             RedirectUri = "http://localhost:5292/callback"
         });
 
-        var act = () => service.GetAuthorizationUrl();
+        var act = () => service.GetAuthorizationUrl(SpotifyOAuthService.CreateState());
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*cannot use localhost*");
@@ -50,15 +50,50 @@ public sealed class SpotifyOAuthServiceTests
             RedirectUri = "http://127.0.0.1:5292/callback"
         });
 
-        var url = service.GetAuthorizationUrl();
+        var state = SpotifyOAuthService.CreateState();
+        var url = service.GetAuthorizationUrl(state);
 
         var query = HttpUtility.ParseQueryString(new Uri(url).Query);
         query["code_challenge_method"].Should().Be("S256");
+        query["state"].Should().Be(state, "every authorize URL must carry the CSRF state");
         var challenge = query["code_challenge"];
         challenge.Should().NotBeNullOrEmpty();
         // SHA-256 base64url-no-pad is exactly 43 characters.
         challenge!.Length.Should().Be(43);
         challenge.Should().NotContain("=").And.NotContain("+").And.NotContain("/");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void GetAuthorizationUrl_RequiresState(string? state)
+    {
+        var service = CreateService(new SpotifyClientOptions
+        {
+            ClientId = "client-id",
+            RedirectUri = "http://127.0.0.1:5292/callback"
+        });
+
+        var act = () => service.GetAuthorizationUrl(state!);
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("*CSRF state*");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ExchangeCodeForTokenAsync_RequiresState(string? state)
+    {
+        var service = CreateService(
+            new SpotifyClientOptions { ClientId = "client-id" },
+            new RecordingHandler());
+
+        await FluentActions.Awaiting(() => service.ExchangeCodeForTokenAsync("auth-code", state!))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*CSRF state*");
     }
 
     [Fact]
@@ -105,7 +140,77 @@ public sealed class SpotifyOAuthServiceTests
             new SpotifyClientOptions { ClientId = "client-id" },
             new RecordingHandler());
 
-        await FluentActions.Awaiting(() => service.ExchangeCodeForTokenAsync("auth-code"))
+        await FluentActions.Awaiting(() => service.ExchangeCodeForTokenAsync("auth-code", "unknown-state"))
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*code_verifier missing*");
+    }
+
+    [Fact]
+    public async Task ExchangeCodeForTokenAsync_VerifierIsSingleUse()
+    {
+        var service = CreateService(
+            new SpotifyClientOptions
+            {
+                ClientId = "client-id",
+                RedirectUri = "http://127.0.0.1:5292/callback"
+            },
+            new RecordingHandler());
+
+        var state = SpotifyOAuthService.CreateState();
+        _ = service.GetAuthorizationUrl(state);
+
+        await service.ExchangeCodeForTokenAsync("auth-code", state);
+
+        await FluentActions.Awaiting(() => service.ExchangeCodeForTokenAsync("auth-code", state))
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*code_verifier missing*");
+    }
+
+    [Fact]
+    public async Task ExchangeCodeForTokenAsync_RejectsExpiredAttempt()
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var service = CreateService(
+            new SpotifyClientOptions
+            {
+                ClientId = "client-id",
+                RedirectUri = "http://127.0.0.1:5292/callback"
+            },
+            new RecordingHandler(),
+            time);
+
+        var state = SpotifyOAuthService.CreateState();
+        _ = service.GetAuthorizationUrl(state);
+
+        time.Advance(TimeSpan.FromMinutes(11));
+
+        await FluentActions.Awaiting(() => service.ExchangeCodeForTokenAsync("auth-code", state))
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*expired*");
+    }
+
+    [Fact]
+    public async Task GetAuthorizationUrl_EvictsAbandonedAttempts()
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var service = CreateService(
+            new SpotifyClientOptions
+            {
+                ClientId = "client-id",
+                RedirectUri = "http://127.0.0.1:5292/callback"
+            },
+            new RecordingHandler(),
+            time);
+
+        var abandonedState = SpotifyOAuthService.CreateState();
+        _ = service.GetAuthorizationUrl(abandonedState);
+
+        time.Advance(TimeSpan.FromMinutes(11));
+
+        // A new authorize attempt sweeps expired entries out of the store.
+        _ = service.GetAuthorizationUrl(SpotifyOAuthService.CreateState());
+
+        await FluentActions.Awaiting(() => service.ExchangeCodeForTokenAsync("auth-code", abandonedState))
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*code_verifier missing*");
     }
@@ -130,16 +235,34 @@ public sealed class SpotifyOAuthServiceTests
         handler.LastFormBody["client_id"].Should().Be("client-id");
     }
 
-    private static SpotifyOAuthService CreateService(SpotifyClientOptions options, HttpMessageHandler? handler = null)
+    private static SpotifyOAuthService CreateService(
+        SpotifyClientOptions options,
+        HttpMessageHandler? handler = null,
+        TimeProvider? timeProvider = null)
     {
         return new SpotifyOAuthService(
             new FakeHttpClientFactory(handler),
-            Options.Create(options));
+            Options.Create(options),
+            timeProvider);
     }
 
     private static string Base64UrlNoPad(byte[] bytes)
     {
         return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    }
+
+    private sealed class FakeTimeProvider : TimeProvider
+    {
+        private DateTimeOffset _utcNow;
+
+        public FakeTimeProvider(DateTimeOffset utcNow)
+        {
+            _utcNow = utcNow;
+        }
+
+        public override DateTimeOffset GetUtcNow() => _utcNow;
+
+        public void Advance(TimeSpan delta) => _utcNow += delta;
     }
 
     private sealed class FakeHttpClientFactory : IHttpClientFactory

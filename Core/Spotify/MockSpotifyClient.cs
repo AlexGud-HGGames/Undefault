@@ -92,7 +92,7 @@ public sealed class MockSpotifyClient : ISpotifyClient
         return Task.FromResult("https://mock.spotify/authorize");
     }
 
-    public Task<SpotifyAuthResult> AuthenticateAsync(string authorizationCode, CancellationToken cancellationToken = default)
+    public Task<SpotifyAuthResult> AuthenticateAsync(string authorizationCode, string state, CancellationToken cancellationToken = default)
     {
         var result = new SpotifyAuthResult(
             AccessToken: "mock-access-token",

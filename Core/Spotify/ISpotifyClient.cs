@@ -14,5 +14,5 @@ public interface ISpotifyClient
     // Authentication
     Task<bool> IsAuthenticatedAsync(CancellationToken cancellationToken = default);
     Task<string> GetAuthorizationUrlAsync(string state, CancellationToken cancellationToken = default);
-    Task<SpotifyAuthResult> AuthenticateAsync(string authorizationCode, CancellationToken cancellationToken = default);
+    Task<SpotifyAuthResult> AuthenticateAsync(string authorizationCode, string state, CancellationToken cancellationToken = default);
 }
