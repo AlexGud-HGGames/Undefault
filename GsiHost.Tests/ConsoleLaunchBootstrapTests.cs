@@ -182,6 +182,88 @@ public sealed class ConsoleLaunchBootstrapTests
     }
 
     [Fact]
+    public void Prepare_MvpFlag_SetsIntentCaptureAndEnablesAllFeatureFlagsInMemory()
+    {
+        RunWithoutSpotifyEnvVars(() =>
+        {
+            // UND-66: --mvp is the one-command MVP launch. It implies intent_capture
+            // and turns Timeline / ManualMusicActions / Keybinds ON via in-memory
+            // overrides, without flipping the git-tracked appsettings default.
+            var configuration = BuildConfiguration(new Dictionary<string, string?>
+            {
+                ["Gsi:Url"] = "http://127.0.0.1:5292"
+            });
+
+            var settings = ConsoleLaunchBootstrap.Prepare(
+                configuration,
+                new[] { "--mvp" },
+                isInteractiveConsole: false,
+                new FakeConsoleCredentialPrompter(),
+                new FakeSpotifySecretStore());
+
+            settings.IsMvpLaunch.Should().BeTrue();
+            settings.ConfigurationOverrides["Runtime:Mode"].Should().Be("intent_capture");
+            settings.ConfigurationOverrides["Timeline:Enabled"].Should().Be("true");
+            settings.ConfigurationOverrides["ManualMusicActions:Enabled"].Should().Be("true");
+            settings.ConfigurationOverrides["Keybinds:Enabled"].Should().Be("true");
+        });
+    }
+
+    [Fact]
+    public void Prepare_MvpFlag_WithScenarioPlayback_KeepsScenarioPlaybackModeButLeavesFlagsOn()
+    {
+        RunWithoutSpotifyEnvVars(() =>
+        {
+            // Explicit --scenario-playback wins for the runtime mode; --mvp still turns
+            // the feature flags on (they are no-ops outside intent_capture).
+            var configuration = BuildConfiguration(new Dictionary<string, string?>
+            {
+                ["Gsi:Url"] = "http://127.0.0.1:5292"
+            });
+
+            var settings = ConsoleLaunchBootstrap.Prepare(
+                configuration,
+                new[] { "--mvp", "--scenario-playback" },
+                isInteractiveConsole: false,
+                new FakeConsoleCredentialPrompter(),
+                new FakeSpotifySecretStore());
+
+            settings.IsMvpLaunch.Should().BeTrue();
+            settings.ConfigurationOverrides["Runtime:Mode"].Should().Be("scenario_playback");
+            settings.ConfigurationOverrides["Timeline:Enabled"].Should().Be("true");
+            settings.ConfigurationOverrides["ManualMusicActions:Enabled"].Should().Be("true");
+            settings.ConfigurationOverrides["Keybinds:Enabled"].Should().Be("true");
+        });
+    }
+
+    [Fact]
+    public void Prepare_MvpFlag_DoesNotForceMockSpotify_AndPreservesIntentCaptureFlagBehavior()
+    {
+        RunWithoutSpotifyEnvVars(() =>
+        {
+            // --mvp composes with --intent-capture and leaves the Spotify mode decision
+            // untouched (real Spotify path stays the default for a non-quick launch).
+            var configuration = BuildConfiguration(new Dictionary<string, string?>
+            {
+                ["Spotify:ClientId"] = "configured-client-id",
+                ["Gsi:Url"] = "http://127.0.0.1:5292"
+            });
+
+            var settings = ConsoleLaunchBootstrap.Prepare(
+                configuration,
+                new[] { "--mvp", "--intent-capture" },
+                isInteractiveConsole: false,
+                new FakeConsoleCredentialPrompter(),
+                new FakeSpotifySecretStore());
+
+            settings.IsMvpLaunch.Should().BeTrue();
+            settings.ConfigurationOverrides["Runtime:Mode"].Should().Be("intent_capture");
+            settings.ConfigurationOverrides["Keybinds:Enabled"].Should().Be("true");
+            settings.ConfigurationOverrides["UseMockSpotify"].Should().Be("false");
+        });
+    }
+
+    [Fact]
     public async Task MockSpotifyClient_ReportsUnauthenticatedState()
     {
         var client = new MockSpotifyClient(NullLogger<MockSpotifyClient>.Instance);

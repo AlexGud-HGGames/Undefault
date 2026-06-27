@@ -102,6 +102,12 @@ Normal console flow with real Spotify and CS2 setup:
 dotnet run --project .\GsiHost
 ```
 
+MVP one-command launch (intent_capture runtime mode + Timeline + ManualMusicActions + Keybinds all ON in memory):
+
+```powershell
+dotnet run --project .\GsiHost -- --mvp
+```
+
 Then follow the printed console checklist:
 
 - register or confirm the Spotify redirect URI: `http://127.0.0.1:5292/callback`
@@ -145,6 +151,16 @@ Equivalent JSON config (turn on the per-feature flags as needed):
 
 Accepted `Runtime:Mode` values are `scenario_playback` (default) and `intent_capture`. Unknown / empty values fall back to `scenario_playback`. See [docs/manual-intent-timeline.md](docs/manual-intent-timeline.md) for the full tester-facing surface.
 
+#### MVP one-command launch (`--mvp`)
+
+`--mvp` is the single-flag MVP launch path. It implies `intent_capture` runtime mode and turns `Timeline.Enabled`, `ManualMusicActions.Enabled`, and `Keybinds.Enabled` ON in memory, so one command produces a host with hotkeys + timeline + manual actions active. It does **not** mutate `appsettings.json`: the git-tracked default stays `scenario_playback` with the feature flags `false`, and `--mvp` overrides them at runtime via the in-memory configuration layer. The printed console startup checklist shows `MVP launch (--mvp): yes …` when active, and the one-time `CS2 GSI connected` banner appears on the first GSI post.
+
+```powershell
+dotnet run --project .\GsiHost -- --mvp
+```
+
+`--intent-capture` and the per-feature JSON flags still work on their own; `--mvp` is just the convenience combination. Passing `--scenario-playback` alongside `--mvp` forces `scenario_playback` (explicit mode wins), in which case the feature flags are no-ops because tester endpoints and `WindowsHotkeyService` only register in `intent_capture`.
+
 ### Useful Startup Flags
 
 
@@ -158,6 +174,7 @@ Accepted `Runtime:Mode` values are `scenario_playback` (default) and `intent_cap
 | `--reset-spotify-secrets`   | You want to overwrite saved Spotify app credentials                              |
 | `--clear-spotify-secrets`   | You want to remove saved Spotify app credentials                                 |
 | `--intent-capture`          | You are a tester / product-owner and want `/timeline`, `/user-actions`, and Windows hotkeys mapped (sets `Runtime:Mode = intent_capture`) |
+| `--mvp`                     | MVP one-command launch: implies `--intent-capture` and turns `Timeline` + `ManualMusicActions` + `Keybinds` ON in memory (does not mutate `appsettings.json`) |
 | `--scenario-playback`       | You want to force the default end-user mode even if `appsettings.json` sets `Runtime:Mode = intent_capture` |
 
 

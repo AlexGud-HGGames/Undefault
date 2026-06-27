@@ -9,6 +9,7 @@ public sealed record ConsoleLaunchSettings(
     string GsiBaseUrl,
     string RedirectUri,
     bool IsQuickLaunch,
+    bool IsMvpLaunch,
     bool SkipCs2Setup,
     bool SkipSmartTrackWarmup,
     bool HasSpotifyCredentials,
@@ -61,6 +62,7 @@ public static class ConsoleLaunchBootstrap
     private const string UseRealSpotifyArg = "--use-real-spotify";
     private const string IntentCaptureArg = "--intent-capture";
     private const string ScenarioPlaybackArg = "--scenario-playback";
+    private const string MvpArg = "--mvp";
 
     public static ConsoleLaunchSettings Apply(WebApplicationBuilder builder, string[] args)
     {
@@ -104,6 +106,7 @@ public static class ConsoleLaunchBootstrap
         var requestedUseRealSpotify = HasArg(args, UseRealSpotifyArg);
         var requestedIntentCapture = HasArg(args, IntentCaptureArg);
         var requestedScenarioPlayback = HasArg(args, ScenarioPlaybackArg);
+        var requestedMvp = HasArg(args, MvpArg);
         var isQuickLaunch = HasArg(args, QuickLaunchArg) && !requestedUseRealSpotify;
         var skipCs2Setup = isQuickLaunch || HasArg(args, SkipCs2SetupArg);
         var skipSmartTrackWarmup = isQuickLaunch || HasArg(args, SkipSmartTrackWarmupArg);
@@ -193,13 +196,25 @@ public static class ConsoleLaunchBootstrap
             ["Spotify:RedirectUri"] = redirectUri
         };
 
-        if (requestedIntentCapture && !requestedScenarioPlayback)
+        if ((requestedIntentCapture || requestedMvp) && !requestedScenarioPlayback)
         {
             overrides["Runtime:Mode"] = "intent_capture";
         }
         else if (requestedScenarioPlayback)
         {
             overrides["Runtime:Mode"] = "scenario_playback";
+        }
+
+        // --mvp is the one-command MVP launch: it implies intent_capture and turns the
+        // three tester feature flags ON in memory so a single flag yields a host with
+        // hotkeys + timeline + manual actions active. The git-tracked appsettings.json
+        // defaults (scenario_playback, flags false) stay intact; these overrides win at
+        // runtime via the in-memory configuration collection added in Apply.
+        if (requestedMvp)
+        {
+            overrides["Timeline:Enabled"] = "true";
+            overrides["ManualMusicActions:Enabled"] = "true";
+            overrides["Keybinds:Enabled"] = "true";
         }
 
         if (!useMockSpotify && !string.IsNullOrWhiteSpace(clientId))
@@ -211,6 +226,7 @@ public static class ConsoleLaunchBootstrap
             GsiBaseUrl: gsiBaseUrl,
             RedirectUri: redirectUri,
             IsQuickLaunch: isQuickLaunch,
+            IsMvpLaunch: requestedMvp,
             SkipCs2Setup: skipCs2Setup,
             SkipSmartTrackWarmup: skipSmartTrackWarmup,
             HasSpotifyCredentials: !string.IsNullOrWhiteSpace(clientId),

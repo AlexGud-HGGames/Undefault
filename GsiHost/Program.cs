@@ -454,6 +454,7 @@ static async Task WriteConsoleStartupChecklistAsync(
     Console.WriteLine();
     Console.WriteLine("UndefaultIt console startup");
     Console.WriteLine($"- Quick launch mode: {(consoleLaunchSettings.IsQuickLaunch ? "yes" : "no")}");
+    Console.WriteLine($"- MVP launch (--mvp): {(consoleLaunchSettings.IsMvpLaunch ? "yes — intent_capture + hotkeys + timeline + manual actions" : "no")}");
     Console.WriteLine($"- Spotify mode: {(consoleLaunchSettings.ConfigurationOverrides.TryGetValue("UseMockSpotify", out var useMock) && string.Equals(useMock, "true", StringComparison.OrdinalIgnoreCase) ? "mock" : "real")}");
     Console.WriteLine($"- Spotify CLIENT_ID: {(consoleLaunchSettings.HasSpotifyCredentials ? "ready" : "missing")} (PKCE flow — no client_secret used)");
     Console.WriteLine($"- Prompted for client id this run: {(consoleLaunchSettings.PromptedForCredentials ? "yes" : "no")}");

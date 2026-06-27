@@ -49,7 +49,7 @@ public sealed class GsiProcessingService
     {
         if (Interlocked.Exchange(ref _hasLoggedConnection, 1) == 0)
         {
-            _logger.LogInformation("CS2 GSI connected.");
+            LogFirstGsiConnection();
         }
 
         var observation = _adapter.Adapt(payload, DateTimeOffset.UtcNow);
@@ -77,6 +77,20 @@ public sealed class GsiProcessingService
             Observation = observation
         });
         return events;
+    }
+
+    private void LogFirstGsiConnection()
+    {
+        // The first GSI post is a runtime event (not part of the static startup
+        // checklist), so surface it as a distinct console highlight the moment CS2
+        // actually starts talking to the host. The structured logger line is kept
+        // so log pipelines still capture it.
+        Console.WriteLine();
+        Console.WriteLine("============================================================");
+        Console.WriteLine(" CS2 GSI connected — receiving live game state from CS2.");
+        Console.WriteLine("============================================================");
+        Console.WriteLine();
+        _logger.LogInformation("CS2 GSI connected.");
     }
 }
 
