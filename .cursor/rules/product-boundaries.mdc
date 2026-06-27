@@ -11,3 +11,14 @@ alwaysApply: true
 - Avoid double Spotify side effects: one orchestration entry should apply playback changes per GSI evaluation tick.
 - `Hotkeys + Timeline` is tester/product-owner tooling only; it is not client UI, not a scenario engine, and not automatic rule generation.
 - Use timeline/manual intent data to discover candidate scenarios, then create explicit reviewed scenario tasks.
+
+## MVP slice decision (2026-06-28)
+
+Product owner approved, for the first MVP slice, an exception to the "Hotkeys + Timeline = tester-only" rule above:
+
+- The MVP ships in `intent_capture` runtime mode. Hotkey-driven playback control and playback-state event recording are MVP **end-user** features for this slice (not tester-only tooling).
+- Confirmed playback-state transitions (`playback_paused` / `playback_resumed`) are recorded with timestamps and persisted to JSONL so automation scenarios can be built later.
+- Auto-scenarios (`round_start -> duck`, `death -> restore_volume`) and the safety-first music engine remain **Post-MVP**.
+- The tester-only framing is superseded **only for the MVP slice**; the original boundary still applies to Post-MVP work unless explicitly changed.
+
+Source: Linear document "MVP scope decision — 2026-06-28 (intent_capture MVP)" and umbrella issue UND-64.
