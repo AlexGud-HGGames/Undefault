@@ -24,6 +24,21 @@ dotnet run --project .\GsiHost -- --skip-smart-track-warmup
 - `--use-mock-spotify` forces mock mode.
 - `--use-real-spotify` forces real OAuth and disables `--quick` defaults.
 
+## Runtime / MVP flags
+
+| Flag | Use when |
+| --- | --- |
+| `--quick` | Mock Spotify, skip CS2 setup and Smart Track warmup |
+| `--mvp` | One-command MVP: `intent_capture` + Timeline + PlaybackObserver ON in memory (does not mutate `appsettings.json`) |
+| `--intent-capture` | Map `/timeline` and register `PlaybackStateObserver` |
+| `--scenario-playback` | Force default end-user mode (GSI rules drive Spotify) |
+| `--skip-cs2-setup` | Real Spotify without automatic CS2 cfg install |
+| `--skip-smart-track-warmup` | Faster startup without Smart Track preload |
+| `--reset-spotify-secrets` | Overwrite saved Spotify `CLIENT_ID` |
+| `--clear-spotify-secrets` | Wipe the encrypted credential store |
+
+See [manual-intent-timeline.md](manual-intent-timeline.md) for timeline / observe+record details, and [backend-architecture.md](backend-architecture.md) for the HTTP endpoint table.
+
 ## Spotify credentials (PKCE, post-UND-47)
 
 Spotify OAuth uses Authorization Code with PKCE, so the desktop client carries no `client_secret`. Only the public `CLIENT_ID` is needed.

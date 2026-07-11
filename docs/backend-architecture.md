@@ -195,11 +195,12 @@ The backend is currently a Minimal API host with these main routes:
 |---|---|---|
 | `GET` | `/` | short host identification string |
 | `POST` | `/gsi` | receive CS2 GSI payloads |
-| `POST` | `/gsi/reset` | reset detector, snapshot store, recent events, and timeline session |
+| `POST` | `/gsi/dota` | receive Dota 2 GSI payloads — **event logging only** (no rules engine / Spotify actions yet) |
+| `POST` | `/gsi/reset` | reset detector, snapshot store, recent events, timeline session, and Dota/playback observer baselines |
 | `GET` | `/status` | current app/runtime status |
 | `GET` | `/events` | recent normalized events |
-| `GET` | `/timeline` | recent unified timeline (GSI + playback transitions) |
-| `GET` | `/timeline/episodes` | intent-episode windows (reserved — empty until a future intent source is added) |
+| `GET` | `/timeline` | recent unified timeline (GSI + playback + dota) — **intent_capture only** |
+| `GET` | `/timeline/episodes` | intent-episode windows (reserved — empty until a future intent source is added) — **intent_capture only** |
 | `GET` | `/spotify/status` | Spotify auth/runtime diagnostics |
 | `GET` | `/config` | read editable system config |
 | `PUT` | `/config` | save editable system config |

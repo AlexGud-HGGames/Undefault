@@ -1,16 +1,16 @@
 # Documentation
 
-Long-form documentation for UndefaultIt lives in this folder. The [repository README](../README.md) stays the quick start: run commands, endpoint table, and configuration cheat sheet.
+Long-form documentation for UndefaultIt. The [repository README](../README.md) is the short portfolio/overview page (highlights, architecture sketch, quick start). Run flags, HTTP endpoints, and `appsettings` tables live here.
 
 ## Guides
 
 | Document | What it covers |
 |----------|----------------|
-| [Backend architecture](backend-architecture.md) | End-to-end pipeline (GSI → rules → actions), Spotify control path, HTTP API, config files, detector and rules engine behavior |
+| [Backend architecture](backend-architecture.md) | End-to-end pipeline (GSI → rules → actions), Spotify control path, **HTTP API**, config files, detector and rules engine behavior |
+| [Quick launch](quick-launch.md) | Fast startup flags (`--quick`, `--mvp`, runtime modes) and failure handling |
 | [CS2 GSI events](cs2-gsi-events.md) | Practical CS2 signal space vs current mapping; ideas for future profile rules |
 | [CS2 GSI simulator](cs2-simulator.md) | Local console + scenarios library that posts realistic CS2 payloads to `POST /gsi` for development and testing |
 | [Roadmap](roadmap.md) | Product direction and planned work |
-| [Quick launch](quick-launch.md) | Mock/skip-based startup for local testing and failure handling |
 | [Spotify playback policy boundary](spotify-playback-policy-boundary.md) | Product guardrails: local playback control, not synchronized Spotify content or a game soundtrack |
 | [Spotify developer compliance notes](spotify-developer-compliance-notes.md) | Project-specific reading of Spotify Developer Terms, Policy, and Compliance Tips with concrete guardrails |
 | [Music safety state](music-safety-state-spec.md) | Authoritative `Unknown` / `Safe` / `Danger` contract, dominance, hysteresis |
