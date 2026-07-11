@@ -14,8 +14,9 @@ namespace GsiHost.Services;
 /// <remarks>
 /// <para>
 /// Recording is observe-only: it issues no Spotify calls and performs no <c>RulesEngine.ActionMap</c> routing.
-/// The coordinator remains the single pause/resume writer; this recorder only appends a timeline entry after
-/// a transition has already been applied.
+/// The <c>PlaybackStateObserver</c> detects <c>is_playing</c> transitions by polling Spotify playback state
+/// and is the single source of truth for pause/resume timeline entries (UND-77); this recorder only appends
+/// a timeline entry after a transition has already been observed.
 /// </para>
 /// <para>
 /// Persistence is gated to the MVP <c>intent_capture</c> runtime via

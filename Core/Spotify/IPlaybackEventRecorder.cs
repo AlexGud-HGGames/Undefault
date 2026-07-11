@@ -5,14 +5,14 @@ namespace Core.Spotify;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Implementations capture that a pause or resume actually changed playback state, so the event can be
-/// persisted to the timeline. They must remain strictly observe-only: no Spotify API calls, no routing
-/// through <c>RulesEngine.ActionMap</c>, and no dependency on host types.
+/// Recording is invoked by <c>GsiHost.Services.PlaybackStateObserver</c> after it detects a confirmed
+/// <c>is_playing</c> transition (pause or resume) while polling Spotify playback state. Implementations
+/// must remain strictly observe-only: no Spotify API calls, no routing through
+/// <c>RulesEngine.ActionMap</c>, and no dependency on host types.
 /// </para>
 /// <para>
-/// Recording is invoked by <see cref="SpotifyPlaybackControlCoordinator"/> only after a successful,
-/// state-changing pause or resume. No-op transitions (already paused / already playing), auth or device
-/// failures, and exceptions are not recorded.
+/// The observer skips recording for no-op states (no usable prior baseline), authentication or device
+/// failures, missing tracks, and exceptions, so only real transitions are recorded.
 /// </para>
 /// </remarks>
 public interface IPlaybackEventRecorder

@@ -9,14 +9,15 @@ using Microsoft.Extensions.Options;
 namespace Core.Tests;
 
 /// <summary>
-/// Unit tests for the <see cref="IPlaybackEventRecorder"/> seam in <see cref="SpotifyPlaybackControlCoordinator"/>.
-/// Verifies the recorder is invoked only after a confirmed, state-changing pause/resume and never on no-ops,
-/// auth/device failures, or exceptions.
+/// Unit tests for <see cref="SpotifyPlaybackControlCoordinator"/> pause/resume control behavior.
+/// UND-77 moved pause/resume transition recording to <c>PlaybackStateObserver</c>; the coordinator no
+/// longer records, so these tests verify playback control (pause/resume applied once on a state change)
+/// and that no recorder calls are made on no-ops, auth/device failures, or when no recorder is supplied.
 /// </summary>
 public class SpotifyPlaybackControlRecorderTests
 {
     [Fact]
-    public async Task Pause_WhenPlaying_RecordsPausedTransitionOnce()
+    public async Task Pause_WhenPlaying_PausesOnce_WithoutRecordingTransition()
     {
         var client = new FakeSpotifyClient
         {
@@ -29,13 +30,12 @@ public class SpotifyPlaybackControlRecorderTests
         await coordinator.TryPauseAsync("custom:music_pause");
 
         client.PauseCalls.Should().Be(1);
-        recorder.PausedCalls.Should().ContainSingle();
+        recorder.PausedCalls.Should().BeEmpty("UND-77 moved recording to the playback state observer");
         recorder.ResumedCalls.Should().BeEmpty();
-        recorder.PausedCalls[0].Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
     }
 
     [Fact]
-    public async Task Resume_WhenPaused_RecordsResumedTransitionOnce()
+    public async Task Resume_WhenPaused_ResumesOnce_WithoutRecordingTransition()
     {
         var client = new FakeSpotifyClient
         {
@@ -48,9 +48,8 @@ public class SpotifyPlaybackControlRecorderTests
         await coordinator.TryResumeAsync("custom:music_resume");
 
         client.ResumeCalls.Should().Be(1);
-        recorder.ResumedCalls.Should().ContainSingle();
+        recorder.ResumedCalls.Should().BeEmpty("UND-77 moved recording to the playback state observer");
         recorder.PausedCalls.Should().BeEmpty();
-        recorder.ResumedCalls[0].Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -124,23 +123,6 @@ public class SpotifyPlaybackControlRecorderTests
     }
 
     [Fact]
-    public async Task RecorderFailure_DoesNotBreakPause()
-    {
-        var client = new FakeSpotifyClient
-        {
-            Authenticated = true,
-            CurrentPlayback = Playing()
-        };
-        var recorder = new ThrowingPlaybackEventRecorder();
-        var coordinator = BuildCoordinator(client, recorder);
-
-        var act = async () => await coordinator.TryPauseAsync("custom:music_pause");
-
-        await act.Should().NotThrowAsync();
-        client.PauseCalls.Should().Be(1);
-    }
-
-    [Fact]
     public void NullRecorder_DefaultsToNoOp_AndDoesNotThrow()
     {
         var client = new FakeSpotifyClient
@@ -204,15 +186,6 @@ public class SpotifyPlaybackControlRecorderTests
             ResumedCalls.Add(timestampUtc);
             return Task.CompletedTask;
         }
-    }
-
-    private sealed class ThrowingPlaybackEventRecorder : IPlaybackEventRecorder
-    {
-        public Task RecordPausedAsync(DateTimeOffset timestampUtc, CancellationToken cancellationToken = default)
-            => throw new InvalidOperationException("timeline unavailable");
-
-        public Task RecordResumedAsync(DateTimeOffset timestampUtc, CancellationToken cancellationToken = default)
-            => throw new InvalidOperationException("timeline unavailable");
     }
 
     private sealed class FakeSpotifyClient : ISpotifyClient

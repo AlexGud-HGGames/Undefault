@@ -10,6 +10,8 @@ public sealed class SpotifyPlaybackControlCoordinator : ISpotifyPlaybackControl
 {
     private readonly ISpotifyClient _spotifyClient;
     private readonly SpotifyVolumeDuckOptions _duckOptions;
+    // Retained for DI/constructor compatibility; UND-77 moved pause/resume recording to
+    // PlaybackStateObserver, so the coordinator no longer reads this field.
     private readonly IPlaybackEventRecorder _recorder;
     private readonly ILogger<SpotifyPlaybackControlCoordinator> _logger;
     private readonly object _sync = new();
@@ -62,9 +64,6 @@ public sealed class SpotifyPlaybackControlCoordinator : ISpotifyPlaybackControl
         }
 
         await _spotifyClient.PauseAsync(cancellationToken).ConfigureAwait(false);
-        await TryRecordTransitionAsync(
-            () => _recorder.RecordPausedAsync(DateTimeOffset.UtcNow, cancellationToken),
-            "pause").ConfigureAwait(false);
         _logger.LogInformation("Playback pause for {EventKey}", eventKeyForLog ?? "(scenario)");
     }
 
@@ -94,9 +93,6 @@ public sealed class SpotifyPlaybackControlCoordinator : ISpotifyPlaybackControl
         }
 
         await _spotifyClient.ResumeAsync(cancellationToken).ConfigureAwait(false);
-        await TryRecordTransitionAsync(
-            () => _recorder.RecordResumedAsync(DateTimeOffset.UtcNow, cancellationToken),
-            "resume").ConfigureAwait(false);
         _logger.LogInformation("Playback resume for {EventKey}", eventKeyForLog ?? "(scenario)");
     }
 
@@ -192,20 +188,6 @@ public sealed class SpotifyPlaybackControlCoordinator : ISpotifyPlaybackControl
             eventKeyForLog ?? "(scenario)",
             volumePercent,
             restoreVolume);
-    }
-
-    private async Task TryRecordTransitionAsync(Func<Task> record, string label)
-    {
-        try
-        {
-            await record().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // Recording is observe-only: a timeline failure must never turn a successful
-            // pause/resume into a failed playback operation.
-            _logger.LogWarning(ex, "Playback {Label} transition recording failed.", label);
-        }
     }
 
     private async Task DuckInternalAsync(
