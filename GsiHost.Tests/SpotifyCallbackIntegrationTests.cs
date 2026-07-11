@@ -145,6 +145,63 @@ public sealed class SpotifyCallbackIntegrationTests : IClassFixture<WebApplicati
         }
     }
 
+    [Fact]
+    public async Task Callback_WithoutCode_Returns400InsteadOfThrowing()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "UndefaultIt.Tests", Guid.NewGuid().ToString("N"));
+        var cs2Root = Path.Combine(tempRoot, "Counter-Strike Global Offensive");
+        Directory.CreateDirectory(Path.Combine(cs2Root, "game", "csgo", "cfg"));
+        Directory.CreateDirectory(tempRoot);
+        await File.WriteAllTextAsync(Path.Combine(tempRoot, "appsettings.json"), BuildAppSettingsJson());
+
+        var previousOverride = Environment.GetEnvironmentVariable("UNDEFAULTIT_CS2_PATH");
+        Environment.SetEnvironmentVariable("UNDEFAULTIT_CS2_PATH", cs2Root);
+
+        var fakeFactory = new FakeHttpClientFactory();
+
+        try
+        {
+            using var customizedFactory = _factory.WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting(WebHostDefaults.ContentRootKey, tempRoot);
+                builder.ConfigureServices(services =>
+                {
+                    services.AddSingleton<SpotifyOAuthService>(_ =>
+                        new SpotifyOAuthService(
+                            fakeFactory,
+                            Options.Create(new SpotifyClientOptions
+                            {
+                                ClientId = "spotify-client-id",
+                                RedirectUri = "http://127.0.0.1:5292/callback",
+                                Scopes = new[] { "user-modify-playback-state", "user-read-playback-state" }
+                            })));
+                });
+            });
+
+            using var client = customizedFactory.CreateClient();
+
+            // A drive-by callback with no query string at all (no code, no state). Previously this
+            // threw BadHttpRequestException (required `code` param) -> DeveloperExceptionPage; now it
+            // must return a friendly 400.
+            var response = await client.GetAsync("/callback");
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            var body = await response.Content.ReadAsStringAsync();
+            body.Should().Contain("Missing authorization code.");
+            fakeFactory.Handler.LastRequest.Should().BeNull(
+                "a code-less callback must not trigger an outbound token exchange");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("UNDEFAULTIT_CS2_PATH", previousOverride);
+
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     private static string BuildAppSettingsJson()
     {
         return """
