@@ -193,5 +193,8 @@ appsettings.Development.json
 appsettings.Local.json
 *.secrets.json
 
+# Runtime timeline capture sessions (intent_capture JSONL)
+GsiHost/timeline/
+
 # Test runner output (CI uploads this as a workflow artifact)
 TestResults/

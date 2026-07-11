@@ -551,7 +551,7 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
-    public async Task AdapterDiagnostics_ListsRegisteredCs2Adapter()
+    public async Task AdapterDiagnostics_ListsRegisteredCs2AndDotaAdapters()
     {
         using var host = CreateTestHost(new FakeSpotifyClient());
 
@@ -559,13 +559,17 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
 
         using var doc = JsonDocument.Parse(body);
         var adapters = doc.RootElement.GetProperty("adapters");
-        adapters.GetArrayLength().Should().Be(1);
+        adapters.GetArrayLength().Should().Be(2);
 
-        var cs2 = adapters[0];
-        cs2.GetProperty("titleId").GetString().Should().Be("cs2");
+        var cs2 = adapters.EnumerateArray().Single(a => a.GetProperty("titleId").GetString() == "cs2");
         cs2.GetProperty("appId").GetInt32().Should().Be(730);
         cs2.GetProperty("endpointPath").GetString().Should().Be("/gsi");
         cs2.GetProperty("description").GetString().Should().NotBeNullOrWhiteSpace();
+
+        var dota = adapters.EnumerateArray().Single(a => a.GetProperty("titleId").GetString() == "dota2");
+        dota.GetProperty("appId").GetInt32().Should().Be(570);
+        dota.GetProperty("endpointPath").GetString().Should().Be("/gsi/dota");
+        dota.GetProperty("description").GetString().Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -817,12 +821,140 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             .BeFalse("playback transitions must not be recorded in scenario_playback");
     }
 
+    [Fact]
+    public async Task DotaEndpoint_AcceptsPayload_RegardlessOfRuntimeMode()
+    {
+        using var host = CreateTestHost(new FakeSpotifyClient());
 
+        var response = await host.Client.PostAsJsonAsync("/gsi/dota", CreateDotaPayload());
 
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
 
+    [Fact]
+    public async Task DotaEndpoint_AllowsEmptyPayload()
+    {
+        using var host = CreateTestHost(new FakeSpotifyClient());
 
+        var response = await host.Client.PostAsJsonAsync("/gsi/dota", new { });
 
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
 
+    [Fact]
+    public async Task DotaEndpoint_WithTimelineEnabled_FirstPayloadEstablishesBaseline_NoTransitionRecorded()
+    {
+        using var host = CreateTestHost(
+            new FakeSpotifyClient(),
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        await host.Client.PostAsJsonAsync(
+            "/gsi/dota",
+            CreateDotaPayload(gameState: "DOTA_GAMERULES_STATE_PRE_GAME", heroAlive: true, paused: false));
+
+        var entries = await GetTimelineEntriesAsync(host.Client);
+        var dotaEntries = entries.Where(e => e.Source == TimelineSources.Dota).ToList();
+
+        dotaEntries.Should().ContainSingle(e => e.EventKey == TimelineDotaEvents.GameStateChanged);
+        dotaEntries.Should().NotContain(e =>
+            e.EventKey == TimelineDotaEvents.HeroDied || e.EventKey == TimelineDotaEvents.HeroRespawned);
+        dotaEntries.Should().NotContain(e =>
+            e.EventKey == TimelineDotaEvents.Paused || e.EventKey == TimelineDotaEvents.Resumed);
+    }
+
+    [Fact]
+    public async Task DotaEndpoint_WithTimelineEnabled_RecordsGameStateHeroDeathAndPauseTransitions()
+    {
+        using var host = CreateTestHost(
+            new FakeSpotifyClient(),
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        await host.Client.PostAsJsonAsync(
+            "/gsi/dota",
+            CreateDotaPayload(gameState: "DOTA_GAMERULES_STATE_PRE_GAME", heroAlive: true, paused: false));
+        await host.Client.PostAsJsonAsync(
+            "/gsi/dota",
+            CreateDotaPayload(gameState: "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS", heroAlive: true, paused: false));
+        await host.Client.PostAsJsonAsync(
+            "/gsi/dota",
+            CreateDotaPayload(gameState: "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS", heroAlive: false, paused: false));
+        await host.Client.PostAsJsonAsync(
+            "/gsi/dota",
+            CreateDotaPayload(gameState: "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS", heroAlive: false, paused: true));
+
+        var entries = await GetTimelineEntriesAsync(host.Client);
+        var dotaEntries = entries.Where(e => e.Source == TimelineSources.Dota).ToList();
+
+        dotaEntries.Count(e => e.EventKey == TimelineDotaEvents.GameStateChanged).Should().Be(2);
+        dotaEntries.Should().ContainSingle(e => e.EventKey == TimelineDotaEvents.HeroDied);
+        dotaEntries.Should().ContainSingle(e => e.EventKey == TimelineDotaEvents.Paused);
+    }
+
+    [Fact]
+    public async Task GsiReset_ClearsDotaBaselines_SoNextPayloadReestablishesWithoutSpuriousDeath()
+    {
+        using var host = CreateTestHost(
+            new FakeSpotifyClient(),
+            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+
+        await host.Client.PostAsJsonAsync(
+            "/gsi/dota",
+            CreateDotaPayload(gameState: "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS", heroAlive: true, paused: false));
+
+        var resetResponse = await host.Client.PostAsync("/gsi/reset", content: null);
+        resetResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        // Same alive=true after reset must be a fresh baseline, not a respawn/death.
+        await host.Client.PostAsJsonAsync(
+            "/gsi/dota",
+            CreateDotaPayload(gameState: "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS", heroAlive: true, paused: false));
+
+        var entries = await GetTimelineEntriesAsync(host.Client);
+        var dotaEntries = entries.Where(e => e.Source == TimelineSources.Dota).ToList();
+
+        dotaEntries.Should().ContainSingle(e => e.EventKey == TimelineDotaEvents.GameStateChanged);
+        dotaEntries.Should().NotContain(e =>
+            e.EventKey == TimelineDotaEvents.HeroDied || e.EventKey == TimelineDotaEvents.HeroRespawned);
+
+        await host.Client.PostAsJsonAsync(
+            "/gsi/dota",
+            CreateDotaPayload(gameState: "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS", heroAlive: false, paused: false));
+
+        entries = await GetTimelineEntriesAsync(host.Client);
+        entries.Should().ContainSingle(e =>
+            e.Source == TimelineSources.Dota && e.EventKey == TimelineDotaEvents.HeroDied);
+    }
+
+    [Fact]
+    public async Task DotaEndpoint_WithTimelineDisabled_DoesNotRecordEntries()
+    {
+        using var host = CreateTestHost(
+            new FakeSpotifyClient(),
+            appSettingsJson: BuildAppSettingsJson(
+                "http://127.0.0.1:5292",
+                runtimeMode: "intent_capture",
+                enableTimeline: false));
+
+        await host.Client.PostAsJsonAsync(
+            "/gsi/dota",
+            CreateDotaPayload(gameState: "DOTA_GAMERULES_STATE_PRE_GAME", heroAlive: true, paused: false));
+        await host.Client.PostAsJsonAsync(
+            "/gsi/dota",
+            CreateDotaPayload(gameState: "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS", heroAlive: false, paused: false));
+
+        var timeline = host.Factory.Services.GetRequiredService<TimelineCaptureService>();
+        timeline.GetRecentEntries().Should().BeEmpty();
+    }
+
+    private static object CreateDotaPayload(string? gameState = null, bool? heroAlive = null, bool? paused = null)
+    {
+        return new
+        {
+            provider = new { name = "Dota 2", appid = 570 },
+            map = new { matchid = "1234567890", game_state = gameState, paused },
+            hero = new { name = "npc_dota_hero_pudge", alive = heroAlive }
+        };
+    }
 
     private static object CreatePayload(long timestamp, int health, int? round = null, string? phase = null)
     {

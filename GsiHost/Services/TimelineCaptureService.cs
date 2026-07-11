@@ -115,6 +115,32 @@ public sealed class TimelineCaptureService : IDisposable
             outcome: null);
     }
 
+    /// <summary>
+    /// Appends a Dota 2 GSI event (source <see cref="TimelineSources.Dota"/>) detected by
+    /// <see cref="DotaGsiLoggingService"/>, using the same in-memory ring and JSONL append path
+    /// as GSI, user-action, and playback entries. This is a logging-only slice (UND-80); the
+    /// game context attached is whatever CS2 last reported (or empty), since there is no
+    /// Dota-neutral game context yet.
+    /// </summary>
+    /// <param name="eventKey">The Dota event key (see <see cref="TimelineDotaEvents"/>).</param>
+    /// <param name="timestampUtc">The UTC timestamp the event was detected.</param>
+    /// <param name="detail">Optional detail text; otherwise <see langword="null"/>.</param>
+    /// <returns>The appended <see cref="TimelineEntry"/>.</returns>
+    public TimelineEntry RecordDotaEvent(
+        string eventKey,
+        DateTimeOffset timestampUtc,
+        string? detail = null)
+    {
+        return AppendEntry(
+            timestampUtc,
+            TimelineSources.Dota,
+            EventKeys.Normalize(eventKey),
+            action: null,
+            detail,
+            _latestContext,
+            outcome: null);
+    }
+
     public void Reset()
     {
         lock (_lock)

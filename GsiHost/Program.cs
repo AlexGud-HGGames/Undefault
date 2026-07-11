@@ -30,6 +30,12 @@ builder.Services.AddSingleton(new GameAdapterRegistration(
     AppId: 730,
     EndpointPath: "/gsi",
     Description: "Counter-Strike 2 Game State Integration"));
+// UND-80: Dota 2 event logging only — no IGameAdapter<T>/rules-engine wiring yet (UND-45).
+builder.Services.AddSingleton(new GameAdapterRegistration(
+    TitleId: "dota2",
+    AppId: 570,
+    EndpointPath: "/gsi/dota",
+    Description: "Dota 2 Game State Integration (event logging only, no rules engine yet)"));
 builder.Services.AddSingleton<IGameAdapterRouter, GameAdapterRouter>();
 builder.Services.AddSingleton<SnapshotDiffer>();
 builder.Services.AddSingleton<EventDetector>(sp =>
@@ -47,6 +53,7 @@ builder.Services.AddSingleton<IMusicOrchestrationFacade, ShadowMusicOrchestratio
 builder.Services.AddSingleton<IShadowMusicSnapshotSink, InMemoryShadowMusicSnapshotSink>();
 builder.Services.AddSingleton<GsiProcessingService>();
 builder.Services.AddSingleton<TimelineCaptureService>();
+builder.Services.AddSingleton<DotaGsiLoggingService>();
 builder.Services.AddSingleton<IPlaybackEventRecorder, PlaybackEventRecorder>();
 // Always register so /gsi/reset can clear the observer baseline in any runtime mode.
 // The background poll loop only runs in intent_capture.
@@ -126,6 +133,12 @@ app.MapPost("/gsi", async (
 {
     var events = await processor.ProcessAsync(payload, cancellationToken);
     return Results.Ok(new { events = events.Count });
+});
+
+app.MapPost("/gsi/dota", (DotaGsiPayloadDto payload, DotaGsiLoggingService dotaLogging) =>
+{
+    dotaLogging.Process(payload);
+    return Results.Ok();
 });
 
 app.MapPost("/gsi/reset", (IOptions<GsiOptions> gsiOptions, IGsiResetService resetService) =>
@@ -462,6 +475,7 @@ static async Task WriteConsoleStartupChecklistAsync(
     Console.WriteLine($"- CS2 setup: {(consoleLaunchSettings.SkipCs2Setup ? "skipped" : "attempted")}");
     Console.WriteLine($"- CS2 GSI target URL: {cs2Status?.GsiUri ?? $"{consoleLaunchSettings.GsiBaseUrl}/gsi"}");
     Console.WriteLine($"- CS2 cfg ready: {(consoleLaunchSettings.SkipCs2Setup ? "skipped" : (cs2Status?.IsReady == true ? "yes" : "no"))}{(consoleLaunchSettings.SkipCs2Setup ? string.Empty : FormatSuffix(cs2Status?.CfgPath))}");
+    Console.WriteLine($"- Dota 2 GSI target URL: {consoleLaunchSettings.GsiBaseUrl}/gsi/dota (event logging only — manual cfg setup, see README)");
     Console.WriteLine($"- Control profile file: {controlProfileService.FilePath}");
     Console.WriteLine($"- Active control profile: {activeControlProfile?.Name ?? "none"}{FormatSuffix(activeControlProfile?.Id)}");
     Console.WriteLine($"- Smart Track Start warmup: {(consoleLaunchSettings.SkipSmartTrackWarmup ? "skipped" : "attempted")}");

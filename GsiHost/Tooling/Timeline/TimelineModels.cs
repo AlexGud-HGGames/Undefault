@@ -7,6 +7,32 @@ public static class TimelineSources
     public const string Gsi = "gsi";
     public const string UserAction = "user_action";
     public const string Playback = "playback";
+
+    /// <summary>Dota 2 GSI events (UND-80). Logging-only source; no adapter/rules engine yet.</summary>
+    public const string Dota = "dota";
+}
+
+/// <summary>
+/// Event keys for Dota 2 GSI transitions recorded to the timeline by
+/// <see cref="GsiHost.Services.DotaGsiLoggingService"/>. This is a minimal logging slice
+/// (UND-80): there is no neutral-context mapping or rules-engine integration yet.
+/// </summary>
+public static class TimelineDotaEvents
+{
+    /// <summary>Raw <c>map.game_state</c> changed (e.g. hero selection -> game in progress).</summary>
+    public const string GameStateChanged = "dota_game_state_changed";
+
+    /// <summary>Observed hero transitioned from alive to dead.</summary>
+    public const string HeroDied = "dota_hero_died";
+
+    /// <summary>Observed hero transitioned from dead to alive (respawned).</summary>
+    public const string HeroRespawned = "dota_hero_respawned";
+
+    /// <summary><c>map.paused</c> transitioned to <see langword="true"/>.</summary>
+    public const string Paused = "dota_paused";
+
+    /// <summary><c>map.paused</c> transitioned to <see langword="false"/>.</summary>
+    public const string Resumed = "dota_resumed";
 }
 
 /// <summary>
