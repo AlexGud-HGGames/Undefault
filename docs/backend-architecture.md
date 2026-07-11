@@ -198,9 +198,8 @@ The backend is currently a Minimal API host with these main routes:
 | `POST` | `/gsi/reset` | reset detector, snapshot store, recent events, and timeline session |
 | `GET` | `/status` | current app/runtime status |
 | `GET` | `/events` | recent normalized events |
-| `GET` | `/timeline` | recent unified timeline (GSI + manual actions) |
-| `GET` | `/timeline/episodes` | manual-intent episodes with before/after windows |
-| `POST` | `/user-actions` | record manual music intent; apply control-profile rule |
+| `GET` | `/timeline` | recent unified timeline (GSI + playback transitions) |
+| `GET` | `/timeline/episodes` | intent-episode windows (reserved — empty until a future intent source is added) |
 | `GET` | `/spotify/status` | Spotify auth/runtime diagnostics |
 | `GET` | `/config` | read editable system config |
 | `PUT` | `/config` | save editable system config |

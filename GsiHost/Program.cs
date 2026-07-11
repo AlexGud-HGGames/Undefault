@@ -48,10 +48,12 @@ builder.Services.AddSingleton<IShadowMusicSnapshotSink, InMemoryShadowMusicSnaps
 builder.Services.AddSingleton<GsiProcessingService>();
 builder.Services.AddSingleton<TimelineCaptureService>();
 builder.Services.AddSingleton<IPlaybackEventRecorder, PlaybackEventRecorder>();
-builder.Services.AddSingleton<UserActionService>();
+// Always register so /gsi/reset can clear the observer baseline in any runtime mode.
+// The background poll loop only runs in intent_capture.
+builder.Services.AddSingleton<PlaybackStateObserver>();
 if (resolvedRuntime.IsIntentCapture)
 {
-    builder.Services.AddHostedService<WindowsHotkeyService>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<PlaybackStateObserver>());
 }
 builder.Services.AddSingleton<AppStateService>();
 builder.Services.AddSingleton<IAppStateService>(sp => sp.GetRequiredService<AppStateService>());
@@ -85,10 +87,8 @@ builder.Services.Configure<RuntimeOptions>(
     builder.Configuration.GetSection(RuntimeOptions.SectionName));
 builder.Services.Configure<TimelineOptions>(
     builder.Configuration.GetSection(TimelineOptions.SectionName));
-builder.Services.Configure<ManualMusicActionOptions>(
-    builder.Configuration.GetSection(ManualMusicActionOptions.SectionName));
-builder.Services.Configure<KeybindOptions>(
-    builder.Configuration.GetSection(KeybindOptions.SectionName));
+builder.Services.Configure<PlaybackObserverOptions>(
+    builder.Configuration.GetSection(PlaybackObserverOptions.SectionName));
 builder.Services.Configure<MusicOrchestrationOptions>(
     builder.Configuration.GetSection(MusicOrchestrationOptions.SectionName));
 
@@ -152,15 +152,6 @@ if (resolvedRuntime.IsIntentCapture)
     app.MapGet("/timeline", (TimelineCaptureService timeline) => Results.Ok((object?)timeline.GetRecentEntries()));
 
     app.MapGet("/timeline/episodes", (TimelineCaptureService timeline) => Results.Ok((object?)timeline.GetIntentEpisodes()));
-
-    app.MapPost("/user-actions", async (
-        UserActionRequest request,
-        UserActionService userActions,
-        CancellationToken cancellationToken) =>
-    {
-        var response = await userActions.RecordAsync(request, cancellationToken);
-        return Results.Ok(response);
-    });
 }
 
 app.MapGet("/spotify/status", async (IServiceProvider services, CancellationToken cancellationToken) =>
@@ -264,7 +255,7 @@ app.MapGet("/spotify/authorize", (IServiceProvider services) =>
 });
 
 app.MapGet("/callback", async (
-    string code,
+    string? code,
     string? state,
     IServiceProvider services,
     CancellationToken cancellationToken) =>
@@ -273,7 +264,7 @@ app.MapGet("/callback", async (
 });
 
 app.MapGet("/spotify/callback", async (
-    string code,
+    string? code,
     string? state,
     IServiceProvider services,
     CancellationToken cancellationToken) =>
@@ -454,7 +445,7 @@ static async Task WriteConsoleStartupChecklistAsync(
     Console.WriteLine();
     Console.WriteLine("UndefaultIt console startup");
     Console.WriteLine($"- Quick launch mode: {(consoleLaunchSettings.IsQuickLaunch ? "yes" : "no")}");
-    Console.WriteLine($"- MVP launch (--mvp): {(consoleLaunchSettings.IsMvpLaunch ? "yes — intent_capture + hotkeys + timeline + manual actions" : "no")}");
+    Console.WriteLine($"- MVP launch (--mvp): {(consoleLaunchSettings.IsMvpLaunch ? "yes — intent_capture + timeline + playback observer" : "no")}");
     Console.WriteLine($"- Spotify mode: {(consoleLaunchSettings.ConfigurationOverrides.TryGetValue("UseMockSpotify", out var useMock) && string.Equals(useMock, "true", StringComparison.OrdinalIgnoreCase) ? "mock" : "real")}");
     Console.WriteLine($"- Spotify CLIENT_ID: {(consoleLaunchSettings.HasSpotifyCredentials ? "ready" : "missing")} (PKCE flow — no client_secret used)");
     Console.WriteLine($"- Prompted for client id this run: {(consoleLaunchSettings.PromptedForCredentials ? "yes" : "no")}");
@@ -492,7 +483,7 @@ static string FormatSuffix(string? value)
 }
 
 static async Task<IResult> HandleSpotifyCallbackAsync(
-    string code,
+    string? code,
     string? state,
     IServiceProvider services,
     CancellationToken cancellationToken)

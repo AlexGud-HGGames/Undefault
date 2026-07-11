@@ -18,7 +18,8 @@ There is no separate desktop UI in this repository. The console checklist, JSON 
 - The backend can generate the required CS2 GSI cfg automatically.
 - Real Spotify mode uses OAuth and encrypted local storage for Spotify app credentials.
 - Mock Spotify mode is available for fast local checks and tests.
-- A **manual intent timeline** records normalized GSI events and optional `POST /user-actions` entries in one ordered log, with game context on manual rows. This is **tester / product-owner tooling only**: the timeline endpoints, `/user-actions`, and Windows hotkeys are mapped only when the host runs in **intent-capture runtime mode** (see [Runtime modes](#runtime-modes) and [docs/manual-intent-timeline.md](docs/manual-intent-timeline.md)).
+- A **timeline** records normalized GSI events and confirmed Spotify playback state transitions (`playback_paused` / `playback_resumed` from the playback state observer) in one ordered log, with game context on each row. The user controls playback with the keyboard media play/pause key (Spotify handles it natively); Undefault only observes Spotify state and records CS events. The timeline endpoints are mapped only when the host runs in **intent-capture runtime mode** (see [Runtime modes](#runtime-modes) and [docs/manual-intent-timeline.md](docs/manual-intent-timeline.md)).
+- Dota 2 posts Game State Integration payloads to `POST /gsi/dota` (**event logging only**, UND-80): `map.game_state` changes, hero death/respawn, and pause/resume are recorded to the same timeline as `source: "dota"`. There is no `DotaGameAdapter`, no neutral-context mapping, and no Spotify actions wired to Dota events yet — see [Dota 2 GSI (event logging only)](#dota-2-gsi-event-logging-only) below.
 
 ## Important Limits
 
@@ -51,7 +52,7 @@ There is no separate desktop UI in this repository. The console checklist, JSON 
 ### Constraints
 
 - No YAML scenario engine.
-- No Dota 2 runtime support yet.
+- No full Dota 2 runtime support yet: `POST /gsi/dota` only logs events to the timeline (UND-80); there is no `DotaGameAdapter`, no neutral-context mapping, and no Spotify actions triggered by Dota events (tracked separately in UND-45).
 - Default Spotify control path: `spotify.control_profile` + `GsiHost/control-profiles.json`.
 - Real Spotify control requires Premium and an active playback device.
 - Spotify features must stay inside the [local playback control boundary](docs/spotify-playback-policy-boundary.md).
@@ -102,7 +103,7 @@ Normal console flow with real Spotify and CS2 setup:
 dotnet run --project .\GsiHost
 ```
 
-MVP one-command launch (intent_capture runtime mode + Timeline + ManualMusicActions + Keybinds all ON in memory):
+MVP one-command launch (intent_capture runtime mode + Timeline + PlaybackObserver all ON in memory):
 
 ```powershell
 dotnet run --project .\GsiHost -- --mvp
@@ -124,15 +125,15 @@ The host has two explicit runtime modes, selected by `Runtime:Mode` in `appsetti
 
 #### Scenario playback mode (default end-user mode)
 
-GSI-driven rules in `RulesEngine.ActionMap` control Spotify through `spotify.control_profile`. Tester tooling is **not mapped**: `/timeline`, `/timeline/episodes`, `/user-actions`, and Windows hotkeys return `404 Not Found`. `WindowsHotkeyService` is not registered. This is the normal user run.
+GSI-driven rules in `RulesEngine.ActionMap` control Spotify through `spotify.control_profile`. The timeline endpoints (`/timeline`, `/timeline/episodes`) and the `PlaybackStateObserver` hosted service are **not mapped/registered**. This is the normal user run.
 
 ```powershell
 dotnet run --project .\GsiHost
 ```
 
-#### Intent capture mode (tester / product-owner tooling)
+#### Intent capture mode (MVP observe + record)
 
-GSI is still ingested for context and recent-event history, but `RulesEngine.DetectAsync` runs **without executing actions**, so captured intent data is not polluted by automatic Spotify side effects. `/timeline`, `/timeline/episodes`, and `/user-actions` are mapped, and `WindowsHotkeyService` is registered. Each tester subsystem still requires its own `Enabled` flag (`Timeline`, `ManualMusicActions`, `Keybinds`).
+GSI is still ingested for context and recent-event history, but `RulesEngine.DetectAsync` runs **without executing actions**, so recorded data is not polluted by automatic Spotify side effects. `/timeline` and `/timeline/episodes` are mapped, and the `PlaybackStateObserver` hosted service is registered so confirmed Spotify pause/resume transitions are recorded. The user controls playback with the keyboard media play/pause key (Spotify handles it natively); Undefault only observes Spotify state and records CS events. The `Timeline` and `PlaybackObserver` flags must be enabled (`--mvp` turns both on).
 
 ```powershell
 dotnet run --project .\GsiHost -- --intent-capture
@@ -144,22 +145,21 @@ Equivalent JSON config (turn on the per-feature flags as needed):
 {
   "Runtime": { "Mode": "intent_capture" },
   "Timeline": { "Enabled": true },
-  "ManualMusicActions": { "Enabled": true },
-  "Keybinds": { "Enabled": true }
+  "PlaybackObserver": { "Enabled": true }
 }
 ```
 
-Accepted `Runtime:Mode` values are `scenario_playback` (default) and `intent_capture`. Unknown / empty values fall back to `scenario_playback`. See [docs/manual-intent-timeline.md](docs/manual-intent-timeline.md) for the full tester-facing surface.
+Accepted `Runtime:Mode` values are `scenario_playback` (default) and `intent_capture`. Unknown / empty values fall back to `scenario_playback`. See [docs/manual-intent-timeline.md](docs/manual-intent-timeline.md) for the full timeline/observer surface.
 
 #### MVP one-command launch (`--mvp`)
 
-`--mvp` is the single-flag MVP launch path. It implies `intent_capture` runtime mode and turns `Timeline.Enabled`, `ManualMusicActions.Enabled`, and `Keybinds.Enabled` ON in memory, so one command produces a host with hotkeys + timeline + manual actions active. It does **not** mutate `appsettings.json`: the git-tracked default stays `scenario_playback` with the feature flags `false`, and `--mvp` overrides them at runtime via the in-memory configuration layer. The printed console startup checklist shows `MVP launch (--mvp): yes …` when active, and the one-time `CS2 GSI connected` banner appears on the first GSI post.
+`--mvp` is the single-flag MVP launch path. It implies `intent_capture` runtime mode and turns `Timeline.Enabled` and `PlaybackObserver.Enabled` ON in memory, so one command produces a host with the timeline + playback observer active. The user controls playback with the keyboard media play/pause key (Spotify handles it natively); Undefault only observes Spotify state and records CS events. It does **not** mutate `appsettings.json`: the git-tracked default stays `scenario_playback` with the feature flags `false`, and `--mvp` overrides them at runtime via the in-memory configuration layer. The printed console startup checklist shows `MVP launch (--mvp): yes …` when active, and the one-time `CS2 GSI connected` banner appears on the first GSI post.
 
 ```powershell
 dotnet run --project .\GsiHost -- --mvp
 ```
 
-`--intent-capture` and the per-feature JSON flags still work on their own; `--mvp` is just the convenience combination. Passing `--scenario-playback` alongside `--mvp` forces `scenario_playback` (explicit mode wins), in which case the feature flags are no-ops because tester endpoints and `WindowsHotkeyService` only register in `intent_capture`.
+`--intent-capture` and the per-feature JSON flags still work on their own; `--mvp` is just the convenience combination. Passing `--scenario-playback` alongside `--mvp` forces `scenario_playback` (explicit mode wins), in which case the feature flags are no-ops because the timeline endpoints and `PlaybackStateObserver` only register in `intent_capture`.
 
 ### Useful Startup Flags
 
@@ -173,8 +173,8 @@ dotnet run --project .\GsiHost -- --mvp
 | `--skip-smart-track-warmup` | You want faster startup without Smart Track Start preload                        |
 | `--reset-spotify-secrets`   | You want to overwrite saved Spotify app credentials                              |
 | `--clear-spotify-secrets`   | You want to remove saved Spotify app credentials                                 |
-| `--intent-capture`          | You are a tester / product-owner and want `/timeline`, `/user-actions`, and Windows hotkeys mapped (sets `Runtime:Mode = intent_capture`) |
-| `--mvp`                     | MVP one-command launch: implies `--intent-capture` and turns `Timeline` + `ManualMusicActions` + `Keybinds` ON in memory (does not mutate `appsettings.json`) |
+| `--intent-capture`          | You want `/timeline` and the playback state observer mapped (sets `Runtime:Mode = intent_capture`) |
+| `--mvp`                     | MVP one-command launch: implies `--intent-capture` and turns `Timeline` + `PlaybackObserver` ON in memory (does not mutate `appsettings.json`) |
 | `--scenario-playback`       | You want to force the default end-user mode even if `appsettings.json` sets `Runtime:Mode = intent_capture` |
 
 
@@ -197,6 +197,48 @@ realistic CS2-shaped payloads (`provider`, `map`, `round`, `player`) to
 and a `--scenario X --once` flag for scripted runs. See
 [docs/cs2-simulator.md](docs/cs2-simulator.md).
 
+### Dota 2 GSI (event logging only)
+
+`POST /gsi/dota` is always mapped, in both runtime modes. It is a minimal, first slice (UND-80): it logs Dota 2 GSI transitions to the same timeline CS2 uses, but there is **no** `DotaGameAdapter`, no rules engine, and no Spotify side effects wired to Dota yet (that follow-up is tracked separately in UND-45). Events only reach `/timeline` and the session JSONL when `Timeline:Enabled=true` (`--mvp` or `--intent-capture` with the flag on), same gate as CS2 and playback entries.
+
+Recorded events: `dota_game_state_changed` (raw `map.game_state` transitions), `dota_hero_died` / `dota_hero_respawned` (`hero.alive` flips), `dota_paused` / `dota_resumed` (`map.paused` flips). The first payload in a session establishes each baseline without recording a spurious transition. Only the flat (non-spectator) payload shape is parsed; the `player:team#:player#` / `hero:team#:player#` spectator shape is not supported yet.
+
+There is no automated Dota cfg installer (unlike `Cs2SetupService` for CS2) in this slice — set it up manually:
+
+1. In Steam, open **Dota 2 → Properties → General → Launch Options** and add:
+
+   ```
+   -gamestateintegration
+   ```
+
+2. Create the folder (if missing) and file:
+
+   ```
+   <Steam library>\steamapps\common\dota 2 beta\game\dota\cfg\gamestate_integration\gamestate_integration_undefaultit.cfg
+   ```
+
+3. Paste this content, matching the host's base URL (`http://127.0.0.1:5292` by default):
+
+   ```
+   "UndefaultIt GSI"
+   {
+       "uri"           "http://127.0.0.1:5292/gsi/dota"
+       "timeout"       "5.0"
+       "buffer"        "0.1"
+       "throttle"      "0.1"
+       "heartbeat"     "30.0"
+       "data"
+       {
+           "provider"   "1"
+           "map"        "1"
+           "player"     "1"
+           "hero"       "1"
+       }
+   }
+   ```
+
+4. Fully restart the Dota 2 client (config changes to an already-registered `uri` are not picked up until restart).
+
 ## Backend Endpoints
 
 
@@ -204,12 +246,12 @@ and a `--scenario X --once` flag for scripted runs. See
 | ------ | -------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `GET`  | `/`                  | Short host banner (sanity check)                                                                             |
 | `POST` | `/gsi`               | Accept CS2 GSI JSON                                                                                          |
+| `POST` | `/gsi/dota`          | Accept Dota 2 GSI JSON — **event logging only** (UND-80), no rules engine / Spotify actions                  |
 | `POST` | `/gsi/reset`         | Reset detector state, snapshot store, recent events ring, and timeline session (used by the local simulator) |
 | `GET`  | `/status`            | Host / runtime status                                                                                        |
 | `GET`  | `/events`            | Recent normalized events                                                                                     |
-| `GET`  | `/timeline`          | Recent unified timeline (GSI + manual actions) — **intent_capture only**, returns `404` in `scenario_playback` |
-| `GET`  | `/timeline/episodes` | Manual-intent episodes with before/after entry windows — **intent_capture only**, returns `404` in `scenario_playback` |
-| `POST` | `/user-actions`      | Record manual music intent; apply matching `control-profiles.json` rule — **intent_capture only**, returns `404` in `scenario_playback` |
+| `GET`  | `/timeline`          | Recent unified timeline (GSI + playback transitions) — **intent_capture only**, returns `404` in `scenario_playback` |
+| `GET`  | `/timeline/episodes` | Intent-episode windows (reserved — empty until a future intent source is added) — **intent_capture only**, returns `404` in `scenario_playback` |
 | `GET`  | `/config`            | Read editable host config                                                                                    |
 | `PUT`  | `/config`            | Save editable host config                                                                                    |
 | `GET`  | `/control-profiles`  | Read console control profiles                                                                                |
@@ -237,11 +279,10 @@ and a `--scenario X --once` flag for scripted runs. See
 | `EventDetector`                                   | Which normalized events fire (`EnableRoundStart`, `EnableDeath`, `EnableCombat`, `EnableIdle`, `RoundStartPhase`, `DeathCooldown`; optional combat/idle tuning keys match `EventDetectorOptions` in Core)   |
 | `SpotifyVolumeDuck`                               | Defaults for `**SpotifyPlaybackControlCoordinator**`: `MuteVolume` is the duck target when a control rule omits a volume; `FallbackRestoreVolume` is used when there is no saved pre-duck volume to restore |
 | `SmartTrackStart` (`Enabled`, `PreloadOnStartup`) | Optional non-zero start positions for **track** playback (`spotify.profile`), not for control-profile commands                                                                                              |
-| `Runtime` (`Mode`)                                | Selects runtime mode: `scenario_playback` (default) or `intent_capture`. CLI flags `--intent-capture` / `--scenario-playback` override this. Tester endpoints and Windows hotkeys only register in `intent_capture` (`RuntimeOptions`)                          |
-| `Timeline`                                        | Manual intent timeline: enable flag, ring size, JSONL directory, episode window sizes (`TimelineOptions`). **Intent-capture only** — has no effect when `Runtime:Mode = scenario_playback`                                                                       |
-| `ManualMusicActions`                              | Gate and optional allowlist for `POST /user-actions` (`ManualMusicActionOptions`). **Intent-capture only** — `/user-actions` is not mapped in `scenario_playback`                                                                                               |
-| `Keybinds`                                        | Optional Windows global hotkeys that invoke the same path as `POST /user-actions` (`KeybindOptions`; off by default). **Intent-capture only** — `WindowsHotkeyService` is not registered in `scenario_playback`                                                  |
-| `RulesEngine.ActionMap`                           | **Source of truth for which actions run** per **detector** event key from GSI (e.g. `round_start` → `spotify.control_profile`). Manual actions do **not** use this map.                                     |
+| `Runtime` (`Mode`)                                | Selects runtime mode: `scenario_playback` (default) or `intent_capture`. CLI flags `--intent-capture` / `--scenario-playback` override this. The timeline endpoints and `PlaybackStateObserver` only register in `intent_capture` (`RuntimeOptions`)                          |
+| `Timeline`                                        | Timeline: enable flag, ring size, JSONL directory, episode window sizes (`TimelineOptions`). **Intent-capture only** — has no effect when `Runtime:Mode = scenario_playback`                                                                       |
+| `PlaybackObserver`                                | Playback state observer: enable flag + poll interval (`PlaybackObserverOptions`). When enabled in `intent_capture`, records confirmed `playback_paused` / `playback_resumed` transitions to the timeline + JSONL. **Intent-capture only** — not registered in `scenario_playback`                                                  |
+| `RulesEngine.ActionMap`                           | **Source of truth for which actions run** per **detector** event key from GSI (e.g. `round_start` → `spotify.control_profile`).                                     |
 
 
 Registered action keys you can list in `ActionMap` today include `log`, `spotify.control_profile`, `spotify.profile`, and `spotify.volume_duck`. The default console path uses only `spotify.control_profile` for `round_start` and `death`.
@@ -257,7 +298,7 @@ Registered action keys you can list in `ActionMap` today include `log`, `spotify
 
 If you map `spotify.volume_duck` in `ActionMap` instead, you use the older dedicated duck/restore action; the default path prefers `**spotify.control_profile`** plus `**control-profiles.json`** so pause, resume, duck, and restore all go through one coordinator.
 
-**Manual music control:** `POST /user-actions` uses the same `control-profiles.json` rules keyed by `eventKey` (often `custom:…`), but it does **not** go through `RulesEngine.ActionMap`. Add rules for those keys if you want manual intents to change playback.
+**Playback control in the MVP slice:** the user controls Spotify with the keyboard media play/pause key (Spotify handles it natively). In `intent_capture` mode Undefault does not issue pause/resume itself; the `PlaybackStateObserver` watches Spotify state and records confirmed `playback_paused` / `playback_resumed` transitions to the timeline. `control-profiles.json` still drives the `scenario_playback` auto-actions (`round_start` → duck, `death` → restore) through `RulesEngine.ActionMap`.
 
 The legacy track-based profile document remains available through `GET /profiles` and `PUT /profiles` (`profiles.json` in the host content root). Use it for `**spotify.profile`** (URI lists per event), not for the default duck/restore console flow.
 

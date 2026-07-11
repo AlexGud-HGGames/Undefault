@@ -1,3 +1,5 @@
+> **Superseded 2026-06-28 (UND-78).** The manual-control stack was removed: Windows hotkeys, `POST /user-actions`, the `Keybinds` / `ManualMusicActions` config sections, and the `custom:music_*` control-profile rules are gone. The user now controls playback with the keyboard media play/pause key (Spotify handles it natively); Undefault only observes Spotify state via `PlaybackStateObserver` and records CS events. The timeline now records `gsi` + `playback` (observer) entries only — there are no `user_action` entries anymore. The rest of this document is kept as historical reference for the removed design.
+
 # Manual intent timeline
 
 > **Tester / product-owner tooling.** Hotkeys + Timeline is internal scenario-discovery tooling. It is **not** a normal end-user feature, and it is **not** an automatic music engine. It only runs when the host is started in **intent-capture runtime mode** (see below).

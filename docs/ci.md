@@ -8,8 +8,8 @@ re-run manually via `workflow_dispatch`.
 
 - File: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
 - Runner: `windows-latest`. Several tests exercise Windows-only paths
-  (CS2 cfg detection in `Cs2SetupTestCollection`, `WindowsHotkeyService`
-  registration, `WindowsProtectedSpotifySecretStore` DPAPI usage); a Linux
+  (CS2 cfg detection in `Cs2SetupTestCollection`,
+  `WindowsProtectedSpotifySecretStore` DPAPI usage); a Linux
   runner would either skip or fail those tests, and mirroring the product
   platform also keeps the CI outcome aligned with a tester machine.
 - SDK: a single `8.0.x` channel installed via `actions/setup-dotnet@v4`,

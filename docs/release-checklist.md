@@ -6,7 +6,7 @@ First MVP slice (Linear umbrella UND-64). Target recipient: developer tester run
 dotnet run --project .\GsiHost -- --mvp
 ```
 
-`--mvp` sets `Runtime:Mode = intent_capture` and turns `Timeline`, `ManualMusicActions`, and `Keybinds` ON in memory. The git-tracked `appsettings.json` default stays `scenario_playback` with the feature flags off.
+`--mvp` sets `Runtime:Mode = intent_capture` and turns `Timeline` and `PlaybackObserver` ON in memory. The git-tracked `appsettings.json` default stays `scenario_playback` with the feature flags off.
 
 ## Prerequisites
 
@@ -36,17 +36,18 @@ dotnet run --project .\GsiHost -- --mvp
 - [ ] On first GSI post, the boxed `CS2 GSI connected` console banner appears.
 - [ ] `GET /events` contains `round_start` (or GSI timeline entries appear).
 
-### MVP #3 - Hotkeys -> playback
+### MVP #3 - Media key -> playback (observed)
 
-- [ ] Press `Ctrl+Alt+P` -> Spotify pauses.
-- [ ] Press `Ctrl+Alt+R` -> Spotify resumes.
-- [ ] Press `Ctrl+Alt+M` -> Spotify ducks (volume to mute target).
+The user controls Spotify with the keyboard media play/pause key (Spotify handles it natively). Undefault does not bind hotkeys or issue pause/resume itself in this slice; it only observes Spotify state and records CS events.
+
+- [ ] Press the media play/pause key -> Spotify pauses (or resumes).
+- [ ] Within ~2s, `GET /timeline` shows a `playback` entry with `eventKey: playback_paused` (or `playback_resumed`) and `timestampUtc`.
 
 ### MVP #4 + #5 - Record + persist pause/resume
 
 - [ ] After a real pause, `GET /timeline` shows a `playback` entry with `eventKey: playback_paused` and `timestampUtc`.
 - [ ] After a real resume, a `playback` / `playback_resumed` entry appears.
-- [ ] A no-op (press pause when already paused) does **not** add a `playback` entry.
+- [ ] A no-op (Spotify state does not change on a poll) does **not** add a `playback` entry; the observer records only actual playing-state transitions.
 - [ ] A JSONL file exists under `{contentRoot}/timeline/session-*.jsonl` with matching lines.
 - [ ] `POST /gsi/reset` starts a new session file; subsequent entries append to the new file.
 
@@ -58,7 +59,7 @@ dotnet run --project .\GsiHost -- --mvp
 
 - Per-session OAuth: the user must re-authorize after every host restart (in-memory tokens). Cross-restart persistence is Post-MVP.
 - MVP runs in `intent_capture` mode; GSI-driven auto-scenarios (`round_start -> duck`, `death -> restore`) are OFF by default in this mode (Post-MVP).
-- Windows-only (encrypted `CLIENT_ID` store + global hotkeys).
+- Windows-only (encrypted `CLIENT_ID` store).
 - No packaged build; run from source. Packaging (UND-32) + `undefault-test` Spotify app (UND-48) are Post-MVP for non-developer testers.
 - `playback` timeline entries recorded before the first GSI post carry empty game context.
 

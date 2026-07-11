@@ -62,7 +62,9 @@ The manifesto referenced “ScenarioController”; that feature was removed. The
 
 Event keys (`round_start`, `death`) are unchanged so `RulesEngine.ActionMap` continues to fire the same actions; renaming or namespacing keys (`cs2.round_start`, etc.) belongs to the scenario rule pack issue.
 
-## Manual intent timeline (current implementation)
+## Manual intent timeline (superseded 2026-06-28 — UND-78)
+
+> **Superseded 2026-06-28 (UND-78).** The manual-control stack (`POST /user-actions`, Windows hotkeys, `UserActionService`, `Keybinds` / `ManualMusicActions` config, `custom:music_*` rules) was removed. The MVP now observes Spotify state via `PlaybackStateObserver` while the user controls playback with the media key; there is no parallel manual Spotify writer. The rationale below is retained as historical context for the one-orchestration-entry rule.
 
 **Manual music actions** (`POST /user-actions`, optional Windows hotkeys) apply `control-profiles.json` by calling `ISpotifyPlaybackControl` directly. They **do not** enqueue `NormalizedEvent` values and **do not** consult `RulesEngine.ActionMap`.
 
@@ -73,5 +75,5 @@ Risk callout: `UserActionService` and timeline/hotkey intent capture remain sepa
 ## Checklist before removing legacy actions
 
 - [x] Baseline integration test: one GSI `round_start` does not double Spotify calls (mock client call count) — `GsiHostIntegrationTests.GsiEndpoint_ShadowMode_RoundStartTick_LegacyDucksOnce_AndShadowReportsSafe` and `GsiEndpoint_ShadowMode_DeathTick_LegacyRestoresOnce_AndShadowReportsDanger` (UND-22).
-- [x] Manual intent isolation: `POST /user-actions` does not invoke the facade and does not route through `RulesEngine.ActionMap` — `GsiHostIntegrationTests.IntentCapture_UserAction_DoesNotInvokeFacade_OrRouteThroughActionMap` (UND-22).
+- [x] Manual intent isolation (historical — test removed with the manual stack in UND-78): `POST /user-actions` did not invoke the facade and did not route through `RulesEngine.ActionMap` (UND-22).
 - [ ] Golden tests for mixer + safety transitions (Phase B prerequisite).

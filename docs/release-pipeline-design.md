@@ -560,8 +560,8 @@ ships.
 6. Hard invariants from the hand-off pack: the test baseline (whatever
    `dotnet test` reports on `main` today) stays green; manual intent stays
    direct via `ISpotifyPlaybackControl`; `intent_capture` mode gating
-   preserved; tester endpoints (`/timeline`, `/timeline/episodes`,
-   `/user-actions`) return 404 in `scenario_playback`.
+   preserved; tester endpoints (`/timeline`, `/timeline/episodes`)
+   return 404 in `scenario_playback`.
 
 ## Suggested follow-up implementation issues (NOT created here)
 

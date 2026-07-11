@@ -206,15 +206,16 @@ public static class ConsoleLaunchBootstrap
         }
 
         // --mvp is the one-command MVP launch: it implies intent_capture and turns the
-        // three tester feature flags ON in memory so a single flag yields a host with
-        // hotkeys + timeline + manual actions active. The git-tracked appsettings.json
-        // defaults (scenario_playback, flags false) stay intact; these overrides win at
-        // runtime via the in-memory configuration collection added in Apply.
+        // tester feature flags ON in memory so a single flag yields a host with timeline
+        // + playback observer active. The user controls playback with the keyboard media
+        // play/pause key (Spotify handles it natively); Undefault only observes and records.
+        // The git-tracked appsettings.json defaults (scenario_playback, flags false) stay
+        // intact; these overrides win at runtime via the in-memory configuration collection
+        // added in Apply.
         if (requestedMvp)
         {
             overrides["Timeline:Enabled"] = "true";
-            overrides["ManualMusicActions:Enabled"] = "true";
-            overrides["Keybinds:Enabled"] = "true";
+            overrides["PlaybackObserver:Enabled"] = "true";
         }
 
         if (!useMockSpotify && !string.IsNullOrWhiteSpace(clientId))

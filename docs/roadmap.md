@@ -2,7 +2,7 @@
 
 ## MVP slice (2026-06-28)
 
-Product owner approved the first MVP slice (Linear umbrella UND-64): connect Spotify + connect CS2 + pre-bound hotkeys → playback control + record confirmed pause/resume with timestamps + persist to JSONL. The MVP runs in `intent_capture` runtime mode via one command:
+Product owner approved the first MVP slice (Linear umbrella UND-64): connect Spotify + connect CS2 + media key → playback control (observed) + record confirmed pause/resume with timestamps + persist to JSONL. The MVP runs in `intent_capture` runtime mode via one command:
 
 ```powershell
 dotnet run --project .\GsiHost -- --mvp
@@ -12,7 +12,7 @@ Status:
 
 - MVP #1 Spotify connect: PKCE OAuth works; UND-52 (mandatory `state` + verifier TTL) implemented, pending commit; per-session tokens accepted for MVP.
 - MVP #2 CS connect: `/gsi` ingestion + auto cfg install work; `CS2 GSI connected` console banner on first post (UND-66).
-- MVP #3 Hotkeys → playback: `--mvp` enables `intent_capture` + Timeline + ManualMusicActions + Keybinds; default bindings `Ctrl+Alt+P` / `Ctrl+Alt+R` / `Ctrl+Alt+M` resolve to pause / resume / duck (UND-66 Done).
+- MVP #3 Media key → playback (observed): `--mvp` enables `intent_capture` + Timeline + PlaybackObserver; the user controls playback with the keyboard media play/pause key (Spotify handles it natively) and Undefault observes + records (UND-66 / UND-78; bound hotkeys + `/user-actions` removed).
 - MVP #4/#5 Record + persist: confirmed `playback_paused` / `playback_resumed` with timestamps appended to JSONL in `intent_capture`; no-ops skipped (UND-65 Done).
 
 Post-MVP: auto-scenarios, safety/mixer engine, neutral-context as live control, multi-game/Dota, scenario rule packs, packaging, persistent tokens. See the Linear UND-37 tree and the "Later" section below.

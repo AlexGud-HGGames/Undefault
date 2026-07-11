@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -397,125 +398,6 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
-    public async Task UserActionEndpoint_RecordsIntentWithCurrentGameContext_AndAppliesControlProfile()
-    {
-        var spotifyClient = new FakeSpotifyClient
-        {
-            Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 70,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
-        };
-        using var host = CreateTestHost(
-            spotifyClient,
-            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
-
-        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4000, 100, round: 4, phase: "freezetime"));
-        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4001, 100, round: 4, phase: "live"));
-
-        var response = await host.Client.PostAsJsonAsync(
-            "/user-actions",
-            new { eventKey = "custom:music_pause", action = "pause", detail = "test command" });
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        spotifyClient.PauseCalls.Should().Be(1);
-
-        var timelineJson = await host.Client.GetStringAsync("/timeline");
-        using var doc = JsonDocument.Parse(timelineJson);
-        var entries = doc.RootElement.EnumerateArray().ToList();
-        entries.Should().HaveCountGreaterThanOrEqualTo(2);
-        entries.Select(e => e.GetProperty("source").GetString()).Should().Contain("gsi");
-
-        var userEntry = entries.Last(e => e.GetProperty("source").GetString() == "user_action");
-        userEntry.GetProperty("eventKey").GetString().Should().Be("custom:music_pause");
-        userEntry.GetProperty("outcome").GetProperty("status").GetString().Should().Be("applied");
-
-        var context = userEntry.GetProperty("gameContext");
-        context.GetProperty("isAlive").GetBoolean().Should().BeTrue();
-        context.GetProperty("health").GetInt32().Should().Be(100);
-        context.GetProperty("round").GetInt32().Should().Be(4);
-        context.GetProperty("roundPhase").GetString().Should().Be("live");
-        context.GetProperty("recentEventKeys").EnumerateArray()
-            .Select(e => e.GetString())
-            .Should()
-            .Contain("round_start");
-
-        entries.Select(e => e.GetProperty("sequence").GetInt64())
-            .Should()
-            .BeInAscendingOrder();
-    }
-
-    [Fact]
-    public async Task UserActionEndpoint_RecordsNoMatchingRuleOutcome()
-    {
-        using var host = CreateTestHost(
-            new FakeSpotifyClient { Authenticated = true },
-            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
-
-        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4100, 100, round: 5, phase: "live"));
-        var response = await host.Client.PostAsJsonAsync(
-            "/user-actions",
-            new { eventKey = "custom:not_configured", action = "pause" });
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var body = await response.Content.ReadAsStringAsync();
-        using var responseDoc = JsonDocument.Parse(body);
-        responseDoc.RootElement
-            .GetProperty("outcome")
-            .GetProperty("status")
-            .GetString()
-            .Should()
-            .Be("no_matching_rule");
-
-        var timelineJson = await host.Client.GetStringAsync("/timeline");
-        using var timelineDoc = JsonDocument.Parse(timelineJson);
-        timelineDoc.RootElement.EnumerateArray()
-            .Last()
-            .GetProperty("outcome")
-            .GetProperty("status")
-            .GetString()
-            .Should()
-            .Be("no_matching_rule");
-    }
-
-    [Fact]
-    public async Task UserActionEndpoint_RejectsNonCustomEventKey_WithInvalidStatus()
-    {
-        var spotifyClient = new FakeSpotifyClient
-        {
-            Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 70,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
-        };
-        using var host = CreateTestHost(
-            spotifyClient,
-            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
-
-        var response = await host.Client.PostAsJsonAsync(
-            "/user-actions",
-            new { eventKey = "round_start", action = "duck" });
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var body = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("outcome").GetProperty("status").GetString().Should().Be("invalid");
-
-        spotifyClient.PauseCalls.Should().Be(0);
-        spotifyClient.ResumeCalls.Should().Be(0);
-        spotifyClient.VolumeCalls.Should().BeEmpty();
-        spotifyClient.PlayedUris.Should().BeEmpty();
-    }
-
-    [Fact]
     public async Task GsiReset_ClearsTimelineEntries()
     {
         using var host = CreateTestHost(
@@ -524,7 +406,6 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
 
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4200, 100, round: 6, phase: "freezetime"));
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4201, 100, round: 6, phase: "live"));
-        await host.Client.PostAsJsonAsync("/user-actions", new { eventKey = "custom:music_pause", action = "pause" });
 
         var before = await host.Client.GetStringAsync("/timeline");
         using (var beforeDoc = JsonDocument.Parse(before))
@@ -538,28 +419,6 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         var after = await host.Client.GetStringAsync("/timeline");
         using var afterDoc = JsonDocument.Parse(after);
         afterDoc.RootElement.GetArrayLength().Should().Be(0);
-    }
-
-    [Fact]
-    public async Task TimelineEpisodes_ExposeManualIntentWindows()
-    {
-        using var host = CreateTestHost(
-            new FakeSpotifyClient { Authenticated = true },
-            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
-
-        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4300, 100, round: 7, phase: "freezetime"));
-        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4301, 100, round: 7, phase: "live"));
-        await host.Client.PostAsJsonAsync("/user-actions", new { eventKey = "custom:music_pause", action = "pause" });
-        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(4302, 0, round: 7, phase: "live"));
-
-        var episodesJson = await host.Client.GetStringAsync("/timeline/episodes");
-        using var doc = JsonDocument.Parse(episodesJson);
-        doc.RootElement.GetArrayLength().Should().BeGreaterThanOrEqualTo(1);
-
-        var episode = doc.RootElement.EnumerateArray().First();
-        episode.GetProperty("label").GetProperty("eventKey").GetString().Should().Be("custom:music_pause");
-        episode.GetProperty("before").GetArrayLength().Should().BeGreaterThanOrEqualTo(1);
-        episode.GetProperty("after").GetArrayLength().Should().BeGreaterThanOrEqualTo(1);
     }
 
     [Fact]
@@ -692,41 +551,6 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
-    public async Task IntentCapture_UserAction_DoesNotInvokeFacade_OrRouteThroughActionMap()
-    {
-        var spotifyClient = new FakeSpotifyClient
-        {
-            Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 70,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
-        };
-        using var host = CreateTestHost(
-            spotifyClient,
-            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
-
-        var response = await host.Client.PostAsJsonAsync(
-            "/user-actions",
-            new { eventKey = "custom:music_pause", action = "pause" });
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        // Manual intent applied through ISpotifyPlaybackControl, not via RulesEngine.ActionMap.
-        spotifyClient.PauseCalls.Should().Be(1);
-        spotifyClient.VolumeCalls.Should().BeEmpty();
-        spotifyClient.ResumeCalls.Should().Be(0);
-        spotifyClient.PlayedUris.Should().BeEmpty();
-
-        // Shadow facade is only invoked from /gsi ticks, not from /user-actions.
-        var shadow = await host.Client.GetStringAsync("/diagnostics/music-shadow");
-        using var doc = JsonDocument.Parse(shadow);
-        doc.RootElement.GetProperty("latest").ValueKind.Should().Be(JsonValueKind.Null);
-        doc.RootElement.GetProperty("recent").GetArrayLength().Should().Be(0);
-    }
-
-    [Fact]
     public async Task AdapterDiagnostics_ListsRegisteredCs2Adapter()
     {
         using var host = CreateTestHost(new FakeSpotifyClient());
@@ -765,13 +589,9 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
 
         var timeline = await host.Client.GetAsync("/timeline");
         var episodes = await host.Client.GetAsync("/timeline/episodes");
-        var userActions = await host.Client.PostAsJsonAsync(
-            "/user-actions",
-            new { eventKey = "custom:music_pause", action = "pause" });
 
         timeline.StatusCode.Should().Be(HttpStatusCode.NotFound);
         episodes.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        userActions.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -787,17 +607,17 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
-    public void ScenarioPlayback_DoesNotRegisterWindowsHotkeyHostedService()
+    public void ScenarioPlayback_DoesNotRegisterPlaybackStateObserverHostedService()
     {
         using var host = CreateTestHost(new FakeSpotifyClient());
 
         var hostedServices = host.Factory.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>();
 
-        hostedServices.OfType<WindowsHotkeyService>().Should().BeEmpty();
+        hostedServices.OfType<PlaybackStateObserver>().Should().BeEmpty();
     }
 
     [Fact]
-    public void IntentCapture_RegistersWindowsHotkeyHostedService()
+    public void IntentCapture_RegistersPlaybackStateObserverHostedService()
     {
         using var host = CreateTestHost(
             new FakeSpotifyClient(),
@@ -805,37 +625,31 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
 
         var hostedServices = host.Factory.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>();
 
-        hostedServices.OfType<WindowsHotkeyService>().Should().HaveCount(1);
+        hostedServices.OfType<PlaybackStateObserver>().Should().HaveCount(1);
     }
 
     [Fact]
-    public async Task PlaybackTransition_StateChangingPause_RecordsPausedInTimelineAndJsonl()
+    public async Task PlaybackObserver_PauseTransition_RecordsPausedInTimelineAndJsonl()
     {
         var spotifyClient = new FakeSpotifyClient
         {
             Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 70,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
+            CurrentPlayback = PlayingWithTrack()
         };
         using var host = CreateTestHost(
             spotifyClient,
-            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+            appSettingsJson: BuildObserverEnabledIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
 
-        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(5000, 100, round: 1, phase: "live"));
+        // Wait for the observer to establish a "playing" baseline before introducing the transition,
+        // so the next poll detects a real true -> false change (AC #1).
+        (await WaitForAsync(
+            () => spotifyClient.GetCurrentPlaybackCalls >= 1,
+            TimeSpan.FromSeconds(8))).Should().BeTrue("observer should poll at least once for a baseline");
 
-        var response = await host.Client.PostAsJsonAsync(
-            "/user-actions",
-            new { eventKey = "custom:music_pause", action = "pause" });
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        spotifyClient.PauseCalls.Should().Be(1);
+        // Simulate the physical media play/pause key: Spotify pauses itself.
+        spotifyClient.CurrentPlayback = spotifyClient.CurrentPlayback with { IsPlaying = false };
 
-        var inMemory = await GetTimelineEntriesAsync(host.Client);
-        var paused = inMemory.SingleOrDefault(e =>
-            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Paused);
+        var paused = await WaitForPlaybackEntryAsync(host.Client, TimelinePlaybackEvents.Paused, TimeSpan.FromSeconds(8));
         paused.Should().NotBeNull();
         paused!.TimestampUtc.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(10));
 
@@ -845,33 +659,25 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
-    public async Task PlaybackTransition_StateChangingResume_RecordsResumedInTimelineAndJsonl()
+    public async Task PlaybackObserver_ResumeTransition_RecordsResumedInTimelineAndJsonl()
     {
         var spotifyClient = new FakeSpotifyClient
         {
             Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: false,
-                VolumePercent: 70,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
+            CurrentPlayback = PausedWithTrack()
         };
         using var host = CreateTestHost(
             spotifyClient,
-            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+            appSettingsJson: BuildObserverEnabledIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
 
-        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(5050, 100, round: 2, phase: "live"));
+        (await WaitForAsync(
+            () => spotifyClient.GetCurrentPlaybackCalls >= 1,
+            TimeSpan.FromSeconds(8))).Should().BeTrue("observer should poll at least once for a baseline");
 
-        var response = await host.Client.PostAsJsonAsync(
-            "/user-actions",
-            new { eventKey = "custom:music_resume", action = "resume" });
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        spotifyClient.ResumeCalls.Should().Be(1);
+        // Simulate the physical media play/pause key: Spotify resumes itself.
+        spotifyClient.CurrentPlayback = spotifyClient.CurrentPlayback with { IsPlaying = true };
 
-        var inMemory = await GetTimelineEntriesAsync(host.Client);
-        var resumed = inMemory.SingleOrDefault(e =>
-            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Resumed);
+        var resumed = await WaitForPlaybackEntryAsync(host.Client, TimelinePlaybackEvents.Resumed, TimeSpan.FromSeconds(8));
         resumed.Should().NotBeNull();
         resumed!.TimestampUtc.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(10));
 
@@ -881,159 +687,78 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
-    public async Task PlaybackTransition_NoOpPause_RecordsNoPlaybackTransition()
+    public async Task PlaybackObserver_ResetStartsNewJsonlSessionFile()
     {
         var spotifyClient = new FakeSpotifyClient
         {
             Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: false,
-                VolumePercent: 70,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
+            CurrentPlayback = PlayingWithTrack()
         };
         using var host = CreateTestHost(
             spotifyClient,
-            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+            appSettingsJson: BuildObserverEnabledIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
 
-        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(5100, 100, round: 3, phase: "live"));
+        (await WaitForAsync(
+            () => spotifyClient.GetCurrentPlaybackCalls >= 1,
+            TimeSpan.FromSeconds(8))).Should().BeTrue("observer should poll at least once for a baseline");
 
-        var response = await host.Client.PostAsJsonAsync(
-            "/user-actions",
-            new { eventKey = "custom:music_pause", action = "pause" });
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        // No state change -> no Spotify pause, no playback transition recorded.
-        spotifyClient.PauseCalls.Should().Be(0);
-
-        var inMemory = await GetTimelineEntriesAsync(host.Client);
-        inMemory.Any(e => e.Source == TimelineSources.Playback)
-            .Should()
-            .BeFalse("a no-op pause must not be recorded as a state transition");
-
-        var onDisk = ReadTimelineEntriesFromDisk(host.TempRoot);
-        onDisk.Any(e => e.Source == TimelineSources.Playback)
-            .Should()
-            .BeFalse("a no-op pause must not be persisted to JSONL");
-    }
-
-    [Fact]
-    public async Task PlaybackTransition_NoOpResume_RecordsNoPlaybackTransition()
-    {
-        var spotifyClient = new FakeSpotifyClient
-        {
-            Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 70,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
-        };
-        using var host = CreateTestHost(
-            spotifyClient,
-            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
-
-        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(5150, 100, round: 4, phase: "live"));
-
-        var response = await host.Client.PostAsJsonAsync(
-            "/user-actions",
-            new { eventKey = "custom:music_resume", action = "resume" });
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        spotifyClient.ResumeCalls.Should().Be(0);
-
-        var inMemory = await GetTimelineEntriesAsync(host.Client);
-        inMemory.Any(e => e.Source == TimelineSources.Playback)
-            .Should()
-            .BeFalse("a no-op resume must not be recorded as a state transition");
-
-        var onDisk = ReadTimelineEntriesFromDisk(host.TempRoot);
-        onDisk.Any(e => e.Source == TimelineSources.Playback)
-            .Should()
-            .BeFalse("a no-op resume must not be persisted to JSONL");
-    }
-
-    [Fact]
-    public async Task PlaybackTransition_ResetStartsNewJsonlSessionFile()
-    {
-        var spotifyClient = new FakeSpotifyClient
-        {
-            Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 70,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
-        };
-        using var host = CreateTestHost(
-            spotifyClient,
-            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
-
-        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(5200, 100, round: 5, phase: "live"));
-        await host.Client.PostAsJsonAsync(
-            "/user-actions",
-            new { eventKey = "custom:music_pause", action = "pause" });
-        spotifyClient.PauseCalls.Should().Be(1);
+        // First transition -> playback_paused recorded to the first JSONL session file.
+        spotifyClient.CurrentPlayback = spotifyClient.CurrentPlayback with { IsPlaying = false };
+        var firstPaused = await WaitForPlaybackEntryAsync(host.Client, TimelinePlaybackEvents.Paused, TimeSpan.FromSeconds(8));
+        firstPaused.Should().NotBeNull();
 
         var filesBefore = GetSessionFiles(host.TempRoot);
         filesBefore.Should().HaveCountGreaterThanOrEqualTo(1);
 
-        var inMemoryBefore = await GetTimelineEntriesAsync(host.Client);
-        inMemoryBefore.Should().Contain(e =>
-            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Paused);
-
+        // Reset clears the in-memory timeline, starts a new JSONL session, and clears the
+        // observer baseline so the next usable poll re-establishes state without a spurious entry.
         var resetResponse = await host.Client.PostAsync("/gsi/reset", content: null);
         resetResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         var inMemoryAfterReset = await GetTimelineEntriesAsync(host.Client);
         inMemoryAfterReset.Should().BeEmpty("reset clears the in-memory timeline");
 
-        // Flip playback back to playing so the next pause is a real state change (the fake client
-        // is a singleton whose state survived the first pause).
-        spotifyClient.CurrentPlayback = spotifyClient.CurrentPlayback with { IsPlaying = true };
+        // Still paused after reset: first post-reset poll is a fresh baseline (no record).
+        var pollsAtReset = spotifyClient.GetCurrentPlaybackCalls;
+        (await WaitForAsync(
+            () => spotifyClient.GetCurrentPlaybackCalls > pollsAtReset,
+            TimeSpan.FromSeconds(8))).Should().BeTrue("observer should re-baseline after reset");
 
-        await host.Client.PostAsJsonAsync(
-            "/user-actions",
-            new { eventKey = "custom:music_pause", action = "pause" });
-        spotifyClient.PauseCalls.Should().Be(2);
+        (await GetTimelineEntriesAsync(host.Client)).Should().BeEmpty(
+            "first usable observation after reset must not emit a transition");
+
+        // Now a real transition writes into the new session file.
+        spotifyClient.CurrentPlayback = spotifyClient.CurrentPlayback with { IsPlaying = true };
+        var resumed = await WaitForPlaybackEntryAsync(host.Client, TimelinePlaybackEvents.Resumed, TimeSpan.FromSeconds(8));
+        resumed.Should().NotBeNull();
 
         var filesAfter = GetSessionFiles(host.TempRoot);
         var newSessionFile = filesAfter.Except(filesBefore, StringComparer.Ordinal).ToList();
         newSessionFile.Should().HaveCount(1, "reset must start a new JSONL session file");
 
-        var inMemoryAfter = await GetTimelineEntriesAsync(host.Client);
-        inMemoryAfter.Should().Contain(e =>
-            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Paused);
-
         var newFileEntries = ReadTimelineEntriesFromFile(newSessionFile[0]);
         newFileEntries.Should().Contain(e =>
-            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Paused);
+            e.Source == TimelineSources.Playback && e.EventKey == TimelinePlaybackEvents.Resumed);
     }
 
     [Fact]
-    public async Task PlaybackTransition_JsonlRoundTripsToTimelineEntry_AndMatchesInMemory()
+    public async Task PlaybackObserver_JsonlRoundTripsToTimelineEntry_AndMatchesInMemory()
     {
         var spotifyClient = new FakeSpotifyClient
         {
             Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 70,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
+            CurrentPlayback = PlayingWithTrack()
         };
         using var host = CreateTestHost(
             spotifyClient,
-            appSettingsJson: BuildIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
+            appSettingsJson: BuildObserverEnabledIntentCaptureAppSettingsJson("http://127.0.0.1:5292"));
 
-        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(5300, 100, round: 6, phase: "live"));
-        await host.Client.PostAsJsonAsync(
-            "/user-actions",
-            new { eventKey = "custom:music_pause", action = "pause" });
+        (await WaitForAsync(
+            () => spotifyClient.GetCurrentPlaybackCalls >= 1,
+            TimeSpan.FromSeconds(8))).Should().BeTrue("observer should poll at least once for a baseline");
+
+        spotifyClient.CurrentPlayback = spotifyClient.CurrentPlayback with { IsPlaying = false };
+        await WaitForPlaybackEntryAsync(host.Client, TimelinePlaybackEvents.Paused, TimeSpan.FromSeconds(8));
 
         var inMemory = await GetTimelineEntriesAsync(host.Client);
         var onDisk = ReadTimelineEntriesFromDisk(host.TempRoot);
@@ -1092,6 +817,13 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             .BeFalse("playback transitions must not be recorded in scenario_playback");
     }
 
+
+
+
+
+
+
+
     private static object CreatePayload(long timestamp, int health, int? round = null, string? phase = null)
     {
         return new
@@ -1149,8 +881,12 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         public int ResumeCalls { get; private set; }
         public int PlaybackSideEffectCalls => PlayedUris.Count + VolumeCalls.Count + PauseCalls + ResumeCalls;
 
+        private int _getCurrentPlaybackCalls;
+        public int GetCurrentPlaybackCalls => _getCurrentPlaybackCalls;
+
         public Task<PlaybackState?> GetCurrentPlaybackAsync(CancellationToken cancellationToken = default)
         {
+            Interlocked.Increment(ref _getCurrentPlaybackCalls);
             return Task.FromResult(CurrentPlayback);
         }
 
@@ -1285,6 +1021,60 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             ?? new List<TimelineEntry>();
     }
 
+    private static async Task<bool> WaitForAsync(Func<bool> predicate, TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (predicate())
+            {
+                return true;
+            }
+
+            await Task.Delay(50);
+        }
+
+        return false;
+    }
+
+    private static async Task<TimelineEntry?> WaitForPlaybackEntryAsync(HttpClient client, string eventKey, TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var entries = await GetTimelineEntriesAsync(client);
+            var match = entries.FirstOrDefault(e =>
+                e.Source == TimelineSources.Playback && e.EventKey == eventKey);
+            if (match is not null)
+            {
+                return match;
+            }
+
+            await Task.Delay(50);
+        }
+
+        return null;
+    }
+
+    private static PlaybackState PlayingWithTrack() => TrackPlaybackState(isPlaying: true);
+
+    private static PlaybackState PausedWithTrack() => TrackPlaybackState(isPlaying: false);
+
+    private static PlaybackState TrackPlaybackState(bool isPlaying) => new(
+        IsPlaying: isPlaying,
+        VolumePercent: 70,
+        Track: SampleTrack(),
+        DeviceId: "device",
+        DeviceName: "Desktop");
+
+    private static Track SampleTrack() => new(
+        Id: "track-1",
+        Name: "Song",
+        Uri: "spotify:track:track-1",
+        DurationMs: 180_000,
+        Artists: new List<Artist> { new("artist-1", "Artist") },
+        Album: null);
+
     private static string[] GetSessionFiles(string tempRoot)
     {
         var directory = Path.Combine(tempRoot, "timeline");
@@ -1332,7 +1122,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         bool allowGsiReset = true,
         string runtimeMode = "scenario_playback",
         bool enableTimeline = false,
-        bool enableManualMusicActions = false,
+        bool enablePlaybackObserver = false,
+        int playbackObserverPollIntervalSeconds = 2,
         bool musicOrchestrationShadowMode = true)
     {
         return $$"""
@@ -1381,8 +1172,9 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
           "Timeline": {
             "Enabled": {{(enableTimeline ? "true" : "false")}}
           },
-          "ManualMusicActions": {
-            "Enabled": {{(enableManualMusicActions ? "true" : "false")}}
+          "PlaybackObserver": {
+            "Enabled": {{(enablePlaybackObserver ? "true" : "false")}},
+            "PollIntervalSeconds": {{playbackObserverPollIntervalSeconds}}
           },
           "RulesEngine": {
             "ActionMap": {
@@ -1402,8 +1194,19 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         return BuildAppSettingsJson(
             gsiBaseUrl,
             runtimeMode: "intent_capture",
+            enableTimeline: true);
+    }
+
+    private static string BuildObserverEnabledIntentCaptureAppSettingsJson(string gsiBaseUrl)
+    {
+        // Mirrors --mvp (intent_capture + timeline) and turns the playback state observer ON
+        // with a 1-second poll so integration tests can observe transitions quickly.
+        return BuildAppSettingsJson(
+            gsiBaseUrl,
+            runtimeMode: "intent_capture",
             enableTimeline: true,
-            enableManualMusicActions: true);
+            enablePlaybackObserver: true,
+            playbackObserverPollIntervalSeconds: 1);
     }
 
     private sealed class NullStepGate : IStepGate

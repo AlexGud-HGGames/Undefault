@@ -186,9 +186,10 @@ public sealed class ConsoleLaunchBootstrapTests
     {
         RunWithoutSpotifyEnvVars(() =>
         {
-            // UND-66: --mvp is the one-command MVP launch. It implies intent_capture
-            // and turns Timeline / ManualMusicActions / Keybinds ON via in-memory
-            // overrides, without flipping the git-tracked appsettings default.
+            // UND-66 / UND-78: --mvp is the one-command MVP launch. It implies intent_capture
+            // and turns Timeline / PlaybackObserver ON via in-memory overrides, without
+            // flipping the git-tracked appsettings default. The user controls playback via
+            // the keyboard media play/pause key; Undefault only observes and records.
             var configuration = BuildConfiguration(new Dictionary<string, string?>
             {
                 ["Gsi:Url"] = "http://127.0.0.1:5292"
@@ -204,8 +205,7 @@ public sealed class ConsoleLaunchBootstrapTests
             settings.IsMvpLaunch.Should().BeTrue();
             settings.ConfigurationOverrides["Runtime:Mode"].Should().Be("intent_capture");
             settings.ConfigurationOverrides["Timeline:Enabled"].Should().Be("true");
-            settings.ConfigurationOverrides["ManualMusicActions:Enabled"].Should().Be("true");
-            settings.ConfigurationOverrides["Keybinds:Enabled"].Should().Be("true");
+            settings.ConfigurationOverrides["PlaybackObserver:Enabled"].Should().Be("true");
         });
     }
 
@@ -231,8 +231,7 @@ public sealed class ConsoleLaunchBootstrapTests
             settings.IsMvpLaunch.Should().BeTrue();
             settings.ConfigurationOverrides["Runtime:Mode"].Should().Be("scenario_playback");
             settings.ConfigurationOverrides["Timeline:Enabled"].Should().Be("true");
-            settings.ConfigurationOverrides["ManualMusicActions:Enabled"].Should().Be("true");
-            settings.ConfigurationOverrides["Keybinds:Enabled"].Should().Be("true");
+            settings.ConfigurationOverrides["PlaybackObserver:Enabled"].Should().Be("true");
         });
     }
 
@@ -258,7 +257,7 @@ public sealed class ConsoleLaunchBootstrapTests
 
             settings.IsMvpLaunch.Should().BeTrue();
             settings.ConfigurationOverrides["Runtime:Mode"].Should().Be("intent_capture");
-            settings.ConfigurationOverrides["Keybinds:Enabled"].Should().Be("true");
+            settings.ConfigurationOverrides["PlaybackObserver:Enabled"].Should().Be("true");
             settings.ConfigurationOverrides["UseMockSpotify"].Should().Be("false");
         });
     }
