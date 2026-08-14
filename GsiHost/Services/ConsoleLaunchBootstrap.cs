@@ -110,9 +110,8 @@ public static class ConsoleLaunchBootstrap
         var isQuickLaunch = HasArg(args, QuickLaunchArg) && !requestedUseRealSpotify;
         var skipCs2Setup = isQuickLaunch || HasArg(args, SkipCs2SetupArg);
         var skipSmartTrackWarmup = isQuickLaunch || HasArg(args, SkipSmartTrackWarmupArg);
-        var useMockSpotify = requestedUseRealSpotify
-            ? false
-            : (requestedUseMockSpotify || isQuickLaunch);
+        // Leftover Spotify is mock unless a tester explicitly asks for the real OAuth client.
+        var useMockSpotify = !requestedUseRealSpotify;
 
         var resetEncryptedStoreRequested = HasArg(args, ResetSecretsArg);
         var clearEncryptedStoreRequested = HasArg(args, ClearSecretsArg);
@@ -193,7 +192,8 @@ public static class ConsoleLaunchBootstrap
         {
             ["UseMockSpotify"] = useMockSpotify ? "true" : "false",
             ["Gsi:Url"] = gsiBaseUrl,
-            ["Spotify:RedirectUri"] = redirectUri
+            ["Spotify:RedirectUri"] = redirectUri,
+            ["Music:Provider"] = ResolveMusicProvider(configuration, isQuickLaunch, requestedUseMockSpotify)
         };
 
         if ((requestedIntentCapture || requestedMvp) && !requestedScenarioPlayback)
@@ -250,6 +250,20 @@ public static class ConsoleLaunchBootstrap
     private static ISpotifySecretStore CreateDefaultSecretStore()
     {
         return new WindowsProtectedSpotifySecretStore();
+    }
+
+    private static string ResolveMusicProvider(
+        IConfiguration configuration,
+        bool isQuickLaunch,
+        bool requestedUseMockSpotify)
+    {
+        if (isQuickLaunch || requestedUseMockSpotify)
+        {
+            return "Mock";
+        }
+
+        var configured = configuration["Music:Provider"];
+        return string.IsNullOrWhiteSpace(configured) ? "Tauon" : configured.Trim();
     }
 
     private static bool HasArg(IEnumerable<string> args, string expectedArg)

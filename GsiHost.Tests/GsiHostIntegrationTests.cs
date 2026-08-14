@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Core.Configuration;
+using Core.Music;
 using Core.Services;
 using Core.Spotify;
 using Core.Spotify.Models;
@@ -18,6 +19,7 @@ using GsiHost.Tooling.Timeline;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GsiHost.Tests;
@@ -275,7 +277,7 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     public async Task Cs2SetupStatus_ReflectsAutoInstalledConfigUsingConfiguredUri()
     {
         const string gsiBaseUrl = "http://127.0.0.1:6875";
-        using var host = CreateTestHost(new FakeSpotifyClient(), gsiBaseUrl);
+        using var host = CreateTestHost(new FakeSpotifyClient(), gsiBaseUrl: gsiBaseUrl);
 
         var status = await host.Client.GetFromJsonAsync<Cs2SetupStatus>("/setup/cs2/status");
 
@@ -372,19 +374,10 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
-    public async Task DefaultControlProfile_DucksOnRoundStart_AndRestoresOnDeath()
+    public async Task DefaultControlProfile_ResumesOnRoundStart_AndPausesOnDeath()
     {
-        var spotifyClient = new FakeSpotifyClient
-        {
-            Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 61,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
-        };
-        using var host = CreateTestHost(spotifyClient);
+        var player = CreatePausedMockPlayer();
+        using var host = CreateTestHost(new FakeSpotifyClient { Authenticated = true }, player);
 
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1000, 100, round: 4, phase: "freezetime"));
         var roundStartResponse = await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1001, 100, round: 4, phase: "live"));
@@ -394,7 +387,25 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         deathResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         File.Exists(Path.Combine(host.TempRoot, "control-profiles.json")).Should().BeTrue();
-        spotifyClient.VolumeCalls.Should().Equal(0, 61);
+        player.ResumeCalls.Should().Be(1);
+        player.PauseCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GsiEndpoint_WhenMusicPlayerUnavailable_StillReturnsOk()
+    {
+        var player = CreatePausedMockPlayer();
+        player.Available = false;
+        using var host = CreateTestHost(new FakeSpotifyClient { Authenticated = true }, player);
+
+        await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1000, 100, round: 4, phase: "freezetime"));
+        var roundStartResponse = await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1001, 100, round: 4, phase: "live"));
+        var deathResponse = await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1002, 0, round: 4, phase: "live"));
+
+        roundStartResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        deathResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        player.ResumeCalls.Should().Be(0);
+        player.PauseCalls.Should().Be(0);
     }
 
     [Fact]
@@ -422,45 +433,26 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
-    public async Task GsiEndpoint_RoundStart_UsesSingleSpotifySideEffectPath()
+    public async Task GsiEndpoint_RoundStart_UsesSinglePlayerSideEffectPath()
     {
-        var spotifyClient = new FakeSpotifyClient
-        {
-            Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 61,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
-        };
-        using var host = CreateTestHost(spotifyClient);
+        var player = CreatePausedMockPlayer();
+        using var host = CreateTestHost(new FakeSpotifyClient { Authenticated = true }, player);
 
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1100, 100, round: 8, phase: "freezetime"));
         var response = await host.Client.PostAsJsonAsync("/gsi", CreatePayload(1101, 100, round: 8, phase: "live"));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        spotifyClient.PlaybackSideEffectCalls.Should().Be(1);
-        spotifyClient.VolumeCalls.Should().Equal(0);
-        spotifyClient.PauseCalls.Should().Be(0);
-        spotifyClient.ResumeCalls.Should().Be(0);
-        spotifyClient.PlayedUris.Should().BeEmpty();
+        player.PlaybackSideEffectCalls.Should().Be(1);
+        player.ResumeCalls.Should().Be(1);
+        player.PauseCalls.Should().Be(0);
+        player.VolumeCalls.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task GsiEndpoint_ShadowMode_RoundStartTick_LegacyDucksOnce_AndShadowReportsSafe()
+    public async Task GsiEndpoint_ShadowMode_RoundStartTick_ResumesOnce_AndShadowReportsSafe()
     {
-        var spotifyClient = new FakeSpotifyClient
-        {
-            Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 61,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
-        };
-        using var host = CreateTestHost(spotifyClient);
+        var player = CreatePausedMockPlayer();
+        using var host = CreateTestHost(new FakeSpotifyClient { Authenticated = true }, player);
 
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2200, 100, round: 11, phase: "freezetime"));
         var response = await host.Client.PostAsJsonAsync(
@@ -468,11 +460,9 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             CreatePayload(2201, 100, round: 11, phase: "live"));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        spotifyClient.VolumeCalls.Count.Should().Be(1);
-        spotifyClient.VolumeCalls[0].Should().Be(0);
-        spotifyClient.PauseCalls.Should().Be(0);
-        spotifyClient.ResumeCalls.Should().Be(0);
-        spotifyClient.PlayedUris.Should().BeEmpty();
+        player.ResumeCalls.Should().Be(1);
+        player.PauseCalls.Should().Be(0);
+        player.VolumeCalls.Should().BeEmpty();
 
         var shadow = await host.Client.GetStringAsync("/diagnostics/music-shadow");
         using var doc = JsonDocument.Parse(shadow);
@@ -483,37 +473,24 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
-    public async Task GsiEndpoint_ShadowMode_DeathTick_LegacyRestoresOnce_AndShadowReportsDanger()
+    public async Task GsiEndpoint_ShadowMode_DeathTick_PausesOnce_AndShadowReportsDanger()
     {
-        var spotifyClient = new FakeSpotifyClient
-        {
-            Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 61,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
-        };
-        using var host = CreateTestHost(spotifyClient);
+        var player = CreatePausedMockPlayer();
+        using var host = CreateTestHost(new FakeSpotifyClient { Authenticated = true }, player);
 
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2300, 100, round: 12, phase: "freezetime"));
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2301, 100, round: 12, phase: "live"));
 
-        // Reset call counters but preserve the in-memory duck state set by the live tick.
-        var volumeCallsBeforeDeath = spotifyClient.VolumeCalls.Count;
+        var pauseCallsBeforeDeath = player.PauseCalls;
 
         var deathResponse = await host.Client.PostAsJsonAsync(
             "/gsi",
             CreatePayload(2302, 0, round: 12, phase: "live"));
 
         deathResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var volumeCallsFromDeath = spotifyClient.VolumeCalls.Count - volumeCallsBeforeDeath;
-        volumeCallsFromDeath.Should().Be(1, "death must restore volume exactly once via the legacy ActionMap path");
-        spotifyClient.VolumeCalls[^1].Should().Be(61, "restore_volume should reuse the pre-duck volume captured before round_start");
-        spotifyClient.PauseCalls.Should().Be(0);
-        spotifyClient.ResumeCalls.Should().Be(0);
-        spotifyClient.PlayedUris.Should().BeEmpty();
+        (player.PauseCalls - pauseCallsBeforeDeath).Should().Be(1, "death must pause exactly once via the ActionMap path");
+        player.ResumeCalls.Should().Be(1);
+        player.VolumeCalls.Should().BeEmpty();
 
         var shadow = await host.Client.GetStringAsync("/diagnostics/music-shadow");
         using var doc = JsonDocument.Parse(shadow);
@@ -524,25 +501,16 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     [Fact]
     public async Task MusicShadowDiagnostics_ShadowModeDisabled_ReturnsEmptyAndDoesNotInvokeFacade()
     {
-        var spotifyClient = new FakeSpotifyClient
-        {
-            Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 61,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
-        };
+        var player = CreatePausedMockPlayer();
         using var host = CreateTestHost(
-            spotifyClient,
+            new FakeSpotifyClient { Authenticated = true },
+            player,
             appSettingsJson: BuildAppSettingsJson("http://127.0.0.1:5292", musicOrchestrationShadowMode: false));
 
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2400, 100, round: 13, phase: "freezetime"));
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2401, 100, round: 13, phase: "live"));
 
-        // Legacy Spotify path is unchanged whether shadow mode is on or off.
-        spotifyClient.VolumeCalls.Should().Equal(0);
+        player.ResumeCalls.Should().Be(1);
 
         var shadow = await host.Client.GetStringAsync("/diagnostics/music-shadow");
         using var doc = JsonDocument.Parse(shadow);
@@ -790,29 +758,19 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     [Fact]
     public async Task PlaybackTransition_ScenarioPlayback_DoesNotRecordPlaybackTransition()
     {
-        var spotifyClient = new FakeSpotifyClient
-        {
-            Authenticated = true,
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 70,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
-        };
-        // Timeline enabled, but runtime is scenario_playback: the recorder must self-gate and
-        // persist nothing. /timeline is not mapped in scenario_playback, so inspect the service.
+        var player = CreatePlayingMockPlayer();
         using var host = CreateTestHost(
-            spotifyClient,
+            new FakeSpotifyClient { Authenticated = true },
+            player,
             appSettingsJson: BuildAppSettingsJson(
                 "http://127.0.0.1:5292",
                 runtimeMode: "scenario_playback",
                 enableTimeline: true));
 
-        var playback = host.Factory.Services.GetRequiredService<ISpotifyPlaybackControl>();
+        var playback = host.Factory.Services.GetRequiredService<IMusicPlaybackControl>();
         await playback.TryPauseAsync("gate-test", CancellationToken.None);
 
-        spotifyClient.PauseCalls.Should().Be(1);
+        player.PauseCalls.Should().Be(1);
 
         var timeline = host.Factory.Services.GetRequiredService<TimelineCaptureService>();
         var entries = timeline.GetRecentEntries();
@@ -1085,6 +1043,7 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
 
     private TestHostContext CreateTestHost(
         ISpotifyClient spotifyClient,
+        IMusicPlayer? musicPlayer = null,
         string gsiBaseUrl = "http://127.0.0.1:5292",
         string? appSettingsJson = null,
         Action<string>? seedContentRoot = null)
@@ -1105,6 +1064,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             builder.ConfigureServices(services =>
             {
                 services.AddSingleton<ISpotifyClient>(_ => spotifyClient);
+                services.AddSingleton<IMusicPlayer>(sp =>
+                    musicPlayer ?? new MockMusicPlayer(sp.GetRequiredService<ILogger<MockMusicPlayer>>()));
             });
         });
 
@@ -1188,6 +1149,20 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         return null;
     }
 
+    private static MockMusicPlayer CreatePausedMockPlayer()
+    {
+        var player = new MockMusicPlayer(NullLogger<MockMusicPlayer>.Instance);
+        player.SeedState(PlaybackStatus.Paused, volumePercent: 61);
+        return player;
+    }
+
+    private static MockMusicPlayer CreatePlayingMockPlayer()
+    {
+        var player = new MockMusicPlayer(NullLogger<MockMusicPlayer>.Instance);
+        player.SeedState(PlaybackStatus.Playing, volumePercent: 70);
+        return player;
+    }
+
     private static PlaybackState PlayingWithTrack() => TrackPlaybackState(isPlaying: true);
 
     private static PlaybackState PausedWithTrack() => TrackPlaybackState(isPlaying: false);
@@ -1249,8 +1224,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
     private static string BuildAppSettingsJson(
         string gsiBaseUrl,
         bool enableSmartTrackStart = false,
-        string roundStartAction = "spotify.control_profile",
-        string deathAction = "spotify.control_profile",
+        string roundStartAction = "music.control_profile",
+        string deathAction = "music.control_profile",
         bool allowGsiReset = true,
         string runtimeMode = "scenario_playback",
         bool enableTimeline = false,
@@ -1282,6 +1257,13 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             "AllowReset": {{(allowGsiReset ? "true" : "false")}}
           },
           "UseMockSpotify": true,
+          "Music": {
+            "Provider": "Mock"
+          },
+          "Tauon": {
+            "BaseUrl": "http://127.0.0.1:7814",
+            "TimeoutSeconds": 2
+          },
           "EventDetector": {
             "EnableRoundStart": true,
             "EnableDeath": true,

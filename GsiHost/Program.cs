@@ -13,6 +13,7 @@ using GsiHost.Configuration;
 using GsiHost.Dtos;
 using GsiHost.Mapping;
 using GsiHost.Mapping.Modules;
+using GsiHost.Players;
 using GsiHost.Services;
 using Microsoft.Extensions.Options;
 
@@ -42,8 +43,9 @@ builder.Services.AddSingleton<EventDetector>(sp =>
     new EventDetector(sp.GetRequiredService<IOptions<EventDetectorOptions>>().Value));
 builder.Services.AddSingleton<ISnapshotStore, InMemorySnapshotStore>();
 builder.Services.AddSingleton<IEventAction, LogEventAction>();
-builder.Services.AddSingleton<IEventAction, SpotifyProfileAction>();
+builder.Services.AddSingleton<IEventAction, MusicControlProfileAction>();
 builder.Services.AddSingleton<IEventAction, SpotifyControlProfileAction>();
+builder.Services.AddSingleton<IEventAction, SpotifyProfileAction>();
 builder.Services.AddSingleton<IEventAction, SpotifyVolumeDuckAction>();
 builder.Services.AddSingleton<IPlaybackPolicy, NoOpPlaybackPolicy>();
 builder.Services.AddSingleton<ISmartTrackStartService, JsonSmartTrackStartService>();
@@ -74,9 +76,14 @@ builder.Services.AddSingleton<ISnapshotModuleMapper, PositionModuleMapper>();
 builder.Services.AddSingleton<ISnapshotModuleMapper, CombatModuleMapper>();
 builder.Services.AddSingleton<ISnapshotModuleMapper, RoundModuleMapper>();
 
+BuildMusicPlayer(builder);
 BuildSpotify(builder);
 
-builder.Services.AddSingleton<ISpotifyPlaybackControl, SpotifyPlaybackControlCoordinator>();
+builder.Services.AddSingleton<SpotifyPlaybackControlCoordinator>();
+builder.Services.AddSingleton<IMusicPlaybackControl>(sp =>
+    sp.GetRequiredService<SpotifyPlaybackControlCoordinator>());
+builder.Services.AddSingleton<ISpotifyPlaybackControl>(sp =>
+    sp.GetRequiredService<SpotifyPlaybackControlCoordinator>());
 
 builder.Services.Configure<RulesEngineOptions>(
     builder.Configuration.GetSection("RulesEngine"));
@@ -98,6 +105,10 @@ builder.Services.Configure<PlaybackObserverOptions>(
     builder.Configuration.GetSection(PlaybackObserverOptions.SectionName));
 builder.Services.Configure<MusicOrchestrationOptions>(
     builder.Configuration.GetSection(MusicOrchestrationOptions.SectionName));
+builder.Services.Configure<MusicProviderOptions>(
+    builder.Configuration.GetSection(MusicProviderOptions.SectionName));
+builder.Services.Configure<TauonOptions>(
+    builder.Configuration.GetSection(TauonOptions.SectionName));
 
 var app = builder.Build();
 
@@ -308,6 +319,23 @@ _ = app.Services.GetRequiredService<TimelineCaptureService>();
 
 app.Run();
 
+void BuildMusicPlayer(WebApplicationBuilder webApplicationBuilder)
+{
+    var provider = webApplicationBuilder.Configuration["Music:Provider"] ?? "Tauon";
+    if (string.Equals(provider, "Mock", StringComparison.OrdinalIgnoreCase))
+    {
+        webApplicationBuilder.Services.AddSingleton<IMusicPlayer, MockMusicPlayer>();
+        return;
+    }
+
+    webApplicationBuilder.Services.AddHttpClient("Tauon");
+    webApplicationBuilder.Services.AddSingleton<IMusicPlayer>(sp =>
+    {
+        var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("Tauon");
+        return ActivatorUtilities.CreateInstance<TauonMusicPlayer>(sp, httpClient);
+    });
+}
+
 void BuildSpotify(WebApplicationBuilder webApplicationBuilder)
 {
     var useMock = webApplicationBuilder.Configuration.GetValue<bool>("UseMockSpotify");
@@ -457,6 +485,7 @@ static async Task WriteConsoleStartupChecklistAsync(
 
     Console.WriteLine();
     Console.WriteLine("UndefaultIt console startup");
+    Console.WriteLine($"- Music provider: {app.Configuration["Music:Provider"] ?? "Tauon"}");
     Console.WriteLine($"- Quick launch mode: {(consoleLaunchSettings.IsQuickLaunch ? "yes" : "no")}");
     Console.WriteLine($"- MVP launch (--mvp): {(consoleLaunchSettings.IsMvpLaunch ? "yes — intent_capture + timeline + playback observer" : "no")}");
     Console.WriteLine($"- Spotify mode: {(consoleLaunchSettings.ConfigurationOverrides.TryGetValue("UseMockSpotify", out var useMock) && string.Equals(useMock, "true", StringComparison.OrdinalIgnoreCase) ? "mock" : "real")}");

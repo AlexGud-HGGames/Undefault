@@ -9,15 +9,13 @@ namespace GsiHost.Tests;
 public sealed class ConsoleLaunchBootstrapTests
 {
     [Fact]
-    public void Prepare_UsesExistingClientIdWithoutPrompting_AndForcesRealSpotify()
+    public void Prepare_DefaultLaunch_UsesMockLeftoverSpotify_AndTauonMusicProvider()
     {
         RunWithoutSpotifyEnvVars(() =>
         {
-            // UND-47: PKCE flow has no client_secret. A configured client_id alone is
-            // sufficient to skip prompting.
             var configuration = BuildConfiguration(new Dictionary<string, string?>
             {
-                ["UseMockSpotify"] = "true",
+                ["UseMockSpotify"] = "false",
                 ["Spotify:ClientId"] = "configured-client-id",
                 ["Spotify:RedirectUri"] = "http://127.0.0.1:5292/callback",
                 ["Gsi:Url"] = "http://127.0.0.1:5292"
@@ -32,12 +30,11 @@ public sealed class ConsoleLaunchBootstrapTests
                 prompter,
                 store);
 
-            settings.HasSpotifyCredentials.Should().BeTrue();
+            settings.HasSpotifyCredentials.Should().BeFalse();
             settings.PromptedForCredentials.Should().BeFalse();
-            settings.ConfigurationOverrides["UseMockSpotify"].Should().Be("false");
+            settings.ConfigurationOverrides["UseMockSpotify"].Should().Be("true");
+            settings.ConfigurationOverrides["Music:Provider"].Should().Be("Tauon");
             settings.LoadedFromEncryptedStore.Should().BeFalse();
-            settings.ConfigurationOverrides.ContainsKey("Spotify:ClientSecret").Should().BeFalse(
-                "PKCE flow no longer carries a client_secret");
             prompter.ValuePrompts.Should().Be(0);
         });
     }
@@ -80,7 +77,7 @@ public sealed class ConsoleLaunchBootstrapTests
 
             var settings = ConsoleLaunchBootstrap.Prepare(
                 configuration,
-                Array.Empty<string>(),
+                new[] { "--use-real-spotify" },
                 isInteractiveConsole: true,
                 prompter,
                 store);
@@ -112,7 +109,7 @@ public sealed class ConsoleLaunchBootstrapTests
 
             var settings = ConsoleLaunchBootstrap.Prepare(
                 configuration,
-                Array.Empty<string>(),
+                new[] { "--use-real-spotify" },
                 isInteractiveConsole: true,
                 new FakeConsoleCredentialPrompter(),
                 store);
@@ -152,6 +149,7 @@ public sealed class ConsoleLaunchBootstrapTests
             settings.HasSpotifyCredentials.Should().BeFalse();
             settings.PromptedForCredentials.Should().BeFalse();
             settings.ConfigurationOverrides["UseMockSpotify"].Should().Be("true");
+            settings.ConfigurationOverrides["Music:Provider"].Should().Be("Mock");
 
             prompter.ValuePrompts.Should().Be(0);
         });
@@ -240,8 +238,8 @@ public sealed class ConsoleLaunchBootstrapTests
     {
         RunWithoutSpotifyEnvVars(() =>
         {
-            // --mvp composes with --intent-capture and leaves the Spotify mode decision
-            // untouched (real Spotify path stays the default for a non-quick launch).
+            // --mvp is leftover tester tooling. Leftover Spotify stays mock unless
+            // --use-real-spotify is passed; Music:Provider remains Tauon.
             var configuration = BuildConfiguration(new Dictionary<string, string?>
             {
                 ["Spotify:ClientId"] = "configured-client-id",
@@ -258,7 +256,8 @@ public sealed class ConsoleLaunchBootstrapTests
             settings.IsMvpLaunch.Should().BeTrue();
             settings.ConfigurationOverrides["Runtime:Mode"].Should().Be("intent_capture");
             settings.ConfigurationOverrides["PlaybackObserver:Enabled"].Should().Be("true");
-            settings.ConfigurationOverrides["UseMockSpotify"].Should().Be("false");
+            settings.ConfigurationOverrides["UseMockSpotify"].Should().Be("true");
+            settings.ConfigurationOverrides["Music:Provider"].Should().Be("Tauon");
         });
     }
 
@@ -287,7 +286,7 @@ public sealed class ConsoleLaunchBootstrapTests
 
             var settings = ConsoleLaunchBootstrap.Prepare(
                 configuration,
-                new[] { "--reset-spotify-secrets" },
+                new[] { "--reset-spotify-secrets", "--use-real-spotify" },
                 isInteractiveConsole: true,
                 prompter,
                 store);
@@ -361,7 +360,8 @@ public sealed class ConsoleLaunchBootstrapTests
                 store);
 
             settings.LegacyClientSecretEnvVarPresent.Should().BeTrue();
-            settings.HasSpotifyCredentials.Should().BeTrue("client_id alone is enough under PKCE");
+            settings.HasSpotifyCredentials.Should().BeFalse(
+                "default launch keeps leftover Spotify mock and does not consume CLIENT_ID");
             settings.ConfigurationOverrides.ContainsKey("Spotify:ClientSecret").Should().BeFalse();
         });
     }

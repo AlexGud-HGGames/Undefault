@@ -41,6 +41,7 @@ public sealed class SpotifyCallbackIntegrationTests : IClassFixture<WebApplicati
                 builder.UseSetting(WebHostDefaults.ContentRootKey, tempRoot);
                 builder.ConfigureServices(services =>
                 {
+                    services.AddSingleton<ITokenStorage, InMemoryTokenStorage>();
                     services.AddSingleton<SpotifyOAuthService>(_ =>
                         new SpotifyOAuthService(
                             fakeFactory,

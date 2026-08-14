@@ -101,8 +101,8 @@ public sealed class JsonControlProfileService : IControlProfileService
                     "Console Default",
                     new List<EventControlRule>
                     {
-                        new(EventKeys.RoundStart, MusicControlCommands.Duck, 0),
-                        new(EventKeys.Death, MusicControlCommands.RestoreVolume)
+                        new(EventKeys.RoundStart, MusicControlCommands.Resume),
+                        new(EventKeys.Death, MusicControlCommands.Pause)
                     })
             });
     }
