@@ -4,7 +4,6 @@ using Core.Music;
 using FluentAssertions;
 using GsiHost.Players;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace GsiHost.Tests;
 
@@ -15,7 +14,7 @@ public sealed class TauonMusicPlayerTests
     [Fact]
     public async Task PlayAsync_SendsGetApi1Play()
     {
-        var (player, handler) = CreatePlayer(OkResponder());
+        var (player, handler, _) = CreatePlayer(OkResponder());
 
         await player.PlayAsync();
 
@@ -25,7 +24,7 @@ public sealed class TauonMusicPlayerTests
     [Fact]
     public async Task PauseAsync_SendsGetApi1Pause()
     {
-        var (player, handler) = CreatePlayer(OkResponder());
+        var (player, handler, _) = CreatePlayer(OkResponder());
 
         await player.PauseAsync();
 
@@ -37,7 +36,7 @@ public sealed class TauonMusicPlayerTests
     [InlineData("stopped")]
     public async Task ResumeAsync_WhenPausedOrStopped_SendsStatusThenPlay(string status)
     {
-        var (player, handler) = CreatePlayer(StatusThenOk(StatusJson(status)));
+        var (player, handler, _) = CreatePlayer(StatusThenOk(StatusJson(status)));
 
         await player.ResumeAsync();
 
@@ -49,7 +48,7 @@ public sealed class TauonMusicPlayerTests
     [Fact]
     public async Task ResumeAsync_WhenPlaying_SendsStatusOnly()
     {
-        var (player, handler) = CreatePlayer(StatusThenOk(StatusJson("playing")));
+        var (player, handler, _) = CreatePlayer(StatusThenOk(StatusJson("playing")));
 
         await player.ResumeAsync();
 
@@ -59,7 +58,7 @@ public sealed class TauonMusicPlayerTests
     [Fact]
     public async Task NextAsync_SendsGetApi1Next()
     {
-        var (player, handler) = CreatePlayer(OkResponder());
+        var (player, handler, _) = CreatePlayer(OkResponder());
 
         await player.NextAsync();
 
@@ -69,7 +68,7 @@ public sealed class TauonMusicPlayerTests
     [Fact]
     public async Task PreviousAsync_SendsGetApi1Back()
     {
-        var (player, handler) = CreatePlayer(OkResponder());
+        var (player, handler, _) = CreatePlayer(OkResponder());
 
         await player.PreviousAsync();
 
@@ -84,7 +83,7 @@ public sealed class TauonMusicPlayerTests
     {
         var json = """{"status":"STATUS","id":123,"title":"Song","artist":"Artist","album":"Album","volume":50}"""
             .Replace("STATUS", status, StringComparison.Ordinal);
-        var (player, handler) = CreatePlayer(_ => Json(json));
+        var (player, handler, _) = CreatePlayer(_ => Json(json));
 
         var state = await player.GetStateAsync();
 
@@ -102,7 +101,7 @@ public sealed class TauonMusicPlayerTests
     [Fact]
     public async Task IsAvailableAsync_WhenStatusJsonIsParseable_ReturnsTrue()
     {
-        var (player, handler) = CreatePlayer(_ => Json(StatusJson("playing")));
+        var (player, handler, _) = CreatePlayer(_ => Json(StatusJson("playing")));
 
         var available = await player.IsAvailableAsync();
 
@@ -113,7 +112,7 @@ public sealed class TauonMusicPlayerTests
     [Fact]
     public async Task GetStateAsync_WhenStatusIsUnknown_MapsUnknown()
     {
-        var (player, _) = CreatePlayer(_ => Json("""{"status":"buffering","title":"x"}"""));
+        var (player, _, _) = CreatePlayer(_ => Json("""{"status":"buffering","title":"x"}"""));
 
         var state = await player.GetStateAsync();
 
@@ -125,9 +124,9 @@ public sealed class TauonMusicPlayerTests
     [Fact]
     public async Task Timeout_IsUnavailableGetStateNullAndPlayDoesNotThrow()
     {
-        var (player, _) = CreatePlayer(
-            sendException: new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout."),
-            timeoutSeconds: 1);
+        // Stub throws TaskCanceledException; this does not wait on HttpClient.Timeout.
+        var (player, _, _) = CreatePlayer(
+            sendException: new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout."));
 
         var available = await player.IsAvailableAsync();
         var state = await player.GetStateAsync();
@@ -141,7 +140,7 @@ public sealed class TauonMusicPlayerTests
     [Fact]
     public async Task ConnectionRefused_IsUnavailableGetStateNullAndPlayDoesNotThrow()
     {
-        var (player, _) = CreatePlayer(sendException: new HttpRequestException("Connection refused"));
+        var (player, _, _) = CreatePlayer(sendException: new HttpRequestException("Connection refused"));
 
         var available = await player.IsAvailableAsync();
         var state = await player.GetStateAsync();
@@ -155,7 +154,7 @@ public sealed class TauonMusicPlayerTests
     [Fact]
     public async Task Http404_IsUnavailableAndGetStateNull()
     {
-        var (player, _) = CreatePlayer(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var (player, _, _) = CreatePlayer(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
 
         (await player.IsAvailableAsync()).Should().BeFalse();
         (await player.GetStateAsync()).Should().BeNull();
@@ -164,7 +163,7 @@ public sealed class TauonMusicPlayerTests
     [Fact]
     public async Task MalformedJson_IsUnavailableAndGetStateNull()
     {
-        var (player, _) = CreatePlayer(_ => Text("{ not json", "application/json"));
+        var (player, _, _) = CreatePlayer(_ => Text("{ not json", "application/json"));
 
         (await player.IsAvailableAsync()).Should().BeFalse();
         (await player.GetStateAsync()).Should().BeNull();
@@ -173,7 +172,7 @@ public sealed class TauonMusicPlayerTests
     [Fact]
     public async Task UnexpectedNonJsonSuccessBody_IsUnavailableAndGetStateNull()
     {
-        var (player, _) = CreatePlayer(_ => Text("OK", "text/plain"));
+        var (player, _, _) = CreatePlayer(_ => Text("OK", "text/plain"));
 
         (await player.IsAvailableAsync()).Should().BeFalse();
         (await player.GetStateAsync()).Should().BeNull();
@@ -184,7 +183,7 @@ public sealed class TauonMusicPlayerTests
     [InlineData(100)]
     public async Task SetVolumeAsync_WhenInRange_SendsSetVolumePath(int volume)
     {
-        var (player, handler) = CreatePlayer(OkResponder());
+        var (player, handler, _) = CreatePlayer(OkResponder());
 
         await player.SetVolumeAsync(volume);
 
@@ -196,7 +195,7 @@ public sealed class TauonMusicPlayerTests
     [InlineData(101)]
     public async Task SetVolumeAsync_WhenOutOfRange_Throws(int volume)
     {
-        var (player, handler) = CreatePlayer(OkResponder());
+        var (player, handler, _) = CreatePlayer(OkResponder());
 
         var act = async () => await player.SetVolumeAsync(volume);
 
@@ -205,10 +204,26 @@ public sealed class TauonMusicPlayerTests
         handler.Requests.Should().BeEmpty();
     }
 
-    private static (TauonMusicPlayer Player, StubHandler Handler) CreatePlayer(
+    [Fact]
+    public async Task CreateClient_IsInvokedOncePerTransportOrStatusCall()
+    {
+        var (player, handler, factory) = CreatePlayer(OkResponder());
+
+        await player.PlayAsync();
+        factory.CreateClientCalls.Should().Be(1);
+
+        await player.PauseAsync();
+        factory.CreateClientCalls.Should().Be(2);
+
+        await player.GetStateAsync();
+        factory.CreateClientCalls.Should().Be(3);
+
+        handler.Requests.Should().HaveCount(3);
+    }
+
+    private static (TauonMusicPlayer Player, StubHandler Handler, CountingHttpClientFactory Factory) CreatePlayer(
         Func<HttpRequestMessage, HttpResponseMessage>? responder = null,
-        Exception? sendException = null,
-        int timeoutSeconds = 2)
+        Exception? sendException = null)
     {
         var handler = new StubHandler
         {
@@ -219,15 +234,9 @@ public sealed class TauonMusicPlayerTests
         {
             BaseAddress = new Uri(BaseUri)
         };
-        var player = new TauonMusicPlayer(
-            http,
-            Options.Create(new TauonOptions
-            {
-                BaseUrl = "http://127.0.0.1:7814",
-                TimeoutSeconds = timeoutSeconds
-            }),
-            NullLogger<TauonMusicPlayer>.Instance);
-        return (player, handler);
+        var factory = new CountingHttpClientFactory(http);
+        var player = new TauonMusicPlayer(factory, NullLogger<TauonMusicPlayer>.Instance);
+        return (player, handler, factory);
     }
 
     private static Func<HttpRequestMessage, HttpResponseMessage> OkResponder()
@@ -267,6 +276,25 @@ public sealed class TauonMusicPlayerTests
         request.Method.Should().Be(HttpMethod.Get);
         request.Uri.Should().NotBeNull();
         request.Uri!.AbsoluteUri.Should().Be(absoluteUri);
+    }
+
+    private sealed class CountingHttpClientFactory : IHttpClientFactory
+    {
+        private readonly HttpClient _http;
+
+        public CountingHttpClientFactory(HttpClient http)
+        {
+            _http = http;
+        }
+
+        public int CreateClientCalls { get; private set; }
+
+        public HttpClient CreateClient(string name)
+        {
+            name.Should().Be(TauonMusicPlayer.HttpClientName);
+            CreateClientCalls++;
+            return _http;
+        }
     }
 
     private sealed class StubHandler : HttpMessageHandler

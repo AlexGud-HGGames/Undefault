@@ -2,6 +2,7 @@ using Core.Actions;
 using Core.Actions.Spotify;
 using Core.Configuration;
 using Core.Diff;
+using Core.Models;
 using Core.Music;
 using Core.Rules;
 using Core.Services;
@@ -112,6 +113,15 @@ builder.Services.Configure<TauonOptions>(
 
 var app = builder.Build();
 
+var resolvedMusicProvider = app.Configuration["Music:Provider"] ?? "Tauon";
+if (!string.Equals(resolvedMusicProvider, "Tauon", StringComparison.OrdinalIgnoreCase)
+    && !string.Equals(resolvedMusicProvider, "Mock", StringComparison.OrdinalIgnoreCase))
+{
+    app.Logger.LogWarning(
+        "Music:Provider '{Provider}' is unknown; using Tauon.",
+        resolvedMusicProvider);
+}
+
 if (consoleLaunchSettings.LegacyClientSecretEnvVarPresent)
 {
     // UND-47: emit a one-time DEBUG line so testers know the env var is no longer
@@ -163,10 +173,39 @@ app.MapPost("/gsi/reset", (IOptions<GsiOptions> gsiOptions, IGsiResetService res
     return Results.NoContent();
 });
 
-app.MapGet("/status", async (IAppStateService appStateService, CancellationToken cancellationToken) =>
+app.MapGet("/status", async (
+    IAppStateService appStateService,
+    IMusicPlayer musicPlayer,
+    IConfiguration configuration,
+    CancellationToken cancellationToken) =>
 {
     var status = await appStateService.GetCurrentStatusAsync(cancellationToken);
-    return Results.Ok(status);
+    MusicPlaybackState? musicState = null;
+    try
+    {
+        musicState = await musicPlayer.GetStateAsync(cancellationToken);
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+        throw;
+    }
+    catch (Exception)
+    {
+        // Fail-soft: GSI fields still return. PlaybackState is leftover Spotify until this overlay.
+    }
+
+    return Results.Ok(new
+    {
+        status.GsiStatus,
+        status.LastSnapshotAt,
+        status.Game,
+        status.LastEvent,
+        leftoverSpotifyStatus = status.SpotifyStatus,
+        musicProvider = configuration["Music:Provider"] ?? "Tauon",
+        musicPlayerAvailable = musicState is not null,
+        playbackState = musicState?.Status.ToString() ?? "Unavailable",
+        currentTrack = musicState?.Track
+    });
 });
 
 app.MapGet("/events", (AppStateService appStateService) => Results.Ok((object?)appStateService.GetRecentEvents()));
@@ -328,12 +367,13 @@ void BuildMusicPlayer(WebApplicationBuilder webApplicationBuilder)
         return;
     }
 
-    webApplicationBuilder.Services.AddHttpClient("Tauon");
-    webApplicationBuilder.Services.AddSingleton<IMusicPlayer>(sp =>
+    // Unknown values fall through to Tauon (logged after the host is built).
+    webApplicationBuilder.Services.AddHttpClient(TauonMusicPlayer.HttpClientName, (sp, client) =>
     {
-        var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("Tauon");
-        return ActivatorUtilities.CreateInstance<TauonMusicPlayer>(sp, httpClient);
+        var opts = sp.GetRequiredService<IOptions<TauonOptions>>().Value ?? new TauonOptions();
+        TauonMusicPlayer.ConfigureClient(client, opts);
     });
+    webApplicationBuilder.Services.AddSingleton<IMusicPlayer, TauonMusicPlayer>();
 }
 
 void BuildSpotify(WebApplicationBuilder webApplicationBuilder)
@@ -487,7 +527,7 @@ static async Task WriteConsoleStartupChecklistAsync(
     Console.WriteLine("UndefaultIt console startup");
     Console.WriteLine($"- Music provider: {app.Configuration["Music:Provider"] ?? "Tauon"}");
     Console.WriteLine($"- Quick launch mode: {(consoleLaunchSettings.IsQuickLaunch ? "yes" : "no")}");
-    Console.WriteLine($"- MVP launch (--mvp): {(consoleLaunchSettings.IsMvpLaunch ? "yes — intent_capture + timeline + playback observer" : "no")}");
+    Console.WriteLine($"- MVP launch (--mvp): {(consoleLaunchSettings.IsMvpLaunch ? "yes — intent_capture (observe only; music.control_profile is not executed)" : "no")}");
     Console.WriteLine($"- Spotify mode: {(consoleLaunchSettings.ConfigurationOverrides.TryGetValue("UseMockSpotify", out var useMock) && string.Equals(useMock, "true", StringComparison.OrdinalIgnoreCase) ? "mock" : "real")}");
     Console.WriteLine($"- Spotify CLIENT_ID: {(consoleLaunchSettings.HasSpotifyCredentials ? "ready" : "missing")} (PKCE flow — no client_secret used)");
     Console.WriteLine($"- Prompted for client id this run: {(consoleLaunchSettings.PromptedForCredentials ? "yes" : "no")}");
@@ -507,6 +547,19 @@ static async Task WriteConsoleStartupChecklistAsync(
     Console.WriteLine($"- Dota 2 GSI target URL: {consoleLaunchSettings.GsiBaseUrl}/gsi/dota (event logging only — manual cfg setup, see README)");
     Console.WriteLine($"- Control profile file: {controlProfileService.FilePath}");
     Console.WriteLine($"- Active control profile: {activeControlProfile?.Name ?? "none"}{FormatSuffix(activeControlProfile?.Id)}");
+    var roundStartCommand = activeControlProfile?.FindRule(EventKeys.RoundStart)?.Command ?? "none";
+    var deathCommand = activeControlProfile?.FindRule(EventKeys.Death)?.Command ?? "none";
+    Console.WriteLine($"- Active control profile commands: round_start={roundStartCommand}, death={deathCommand}");
+    if (!string.Equals(roundStartCommand, MusicControlCommands.Resume, StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(deathCommand, MusicControlCommands.Pause, StringComparison.OrdinalIgnoreCase))
+    {
+        Console.WriteLine("- WARNING: existing control-profiles.json is not the product default (round_start=resume, death=pause) and was not auto-migrated.");
+        app.Logger.LogWarning(
+            "Active control profile '{ProfileId}' uses round_start={RoundStart}, death={Death}; product default is resume/pause. Existing control-profiles.json is not migrated.",
+            activeControlProfile?.Id,
+            roundStartCommand,
+            deathCommand);
+    }
     Console.WriteLine($"- Smart Track Start warmup: {(consoleLaunchSettings.SkipSmartTrackWarmup ? "skipped" : "attempted")}");
     Console.WriteLine($"- Smart Track Start: {(smartTrackStartOptions.Enabled ? "enabled" : "disabled")}");
     Console.WriteLine($"- Smart Track Start file: {smartTrackStartService.FilePath}");
@@ -516,7 +569,8 @@ static async Task WriteConsoleStartupChecklistAsync(
     Console.WriteLine("- Use --clear-spotify-secrets to wipe the encrypted store. With PKCE there is no client_secret to clear; this only removes the cached client id.");
     Console.WriteLine("- Edit control-profiles.json for pause/resume/duck behavior.");
     Console.WriteLine("- Edit smart-track-starts.json to configure optional non-zero track starts for spotify.profile playback.");
-    Console.WriteLine("- Open /spotify/status, /setup/cs2/status, or /control-profiles for diagnostics.");
+    Console.WriteLine("- Open /status for GSI + IMusicPlayer state. /spotify/status is leftover until PIVOT-10.");
+    Console.WriteLine("- Tauon smoke (PIVOT-9): default launch without --mvp; watch Tauon and Playback pause/resume logs, not leftover Spotify fields.");
     Console.WriteLine();
 }
 

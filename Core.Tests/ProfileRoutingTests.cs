@@ -223,7 +223,8 @@ public class ProfileRoutingTests
         await action.ExecuteAsync(NormalizedEvent.Death(BuildSnapshot(DateTimeOffset.UtcNow.AddSeconds(1), 0, isAlive: false)));
         await action.ExecuteAsync(NormalizedEvent.Death(BuildSnapshot(DateTimeOffset.UtcNow.AddSeconds(1.1), 0, isAlive: false)));
 
-        player.ResumeCalls.Should().Be(1);
+        player.PlayCalls.Should().Be(1);
+        player.ResumeCalls.Should().Be(0);
         player.PauseCalls.Should().Be(1);
     }
 
@@ -257,6 +258,7 @@ public class ProfileRoutingTests
         };
 
         await act.Should().NotThrowAsync();
+        player.PlayCalls.Should().Be(0);
         player.ResumeCalls.Should().Be(0);
         player.PauseCalls.Should().Be(0);
     }
@@ -330,7 +332,8 @@ public class ProfileRoutingTests
         await action.ExecuteAsync(NormalizedEvent.Death(BuildSnapshot(DateTimeOffset.UtcNow.AddSeconds(1), 0, isAlive: false)));
 
         player.PauseCalls.Should().Be(1);
-        player.ResumeCalls.Should().Be(1);
+        player.PlayCalls.Should().Be(1);
+        player.ResumeCalls.Should().Be(0);
     }
 
     [Fact]
@@ -379,6 +382,44 @@ public class ProfileRoutingTests
 
         player.NextCalls.Should().Be(1);
         player.PreviousCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task MusicControlProfileAction_WhenCanceled_Rethrows()
+    {
+        var player = new FakeMusicPlayer
+        {
+            Available = true,
+            State = new MusicPlaybackState(PlaybackStatus.Paused, Track: null, VolumePercent: 55)
+        };
+        var controlProfileService = new FakeControlProfileService(new ConsoleControlProfilesConfig(
+            "console-default",
+            new List<ConsoleControlProfile>
+            {
+                new("console-default", "Console Default", new List<EventControlRule>
+                {
+                    new(EventKeys.RoundStart, MusicControlCommands.Resume)
+                })
+            }));
+        var playback = new MusicPlaybackControlCoordinator(
+            player,
+            Options.Create(new SpotifyVolumeDuckOptions()),
+            NullLogger<MusicPlaybackControlCoordinator>.Instance);
+        var action = new MusicControlProfileAction(
+            playback,
+            controlProfileService,
+            NullLogger<MusicControlProfileAction>.Instance);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var act = async () => await action.ExecuteAsync(
+            NormalizedEvent.RoundStart(BuildSnapshot(DateTimeOffset.UtcNow, 100, isAlive: true)),
+            cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        player.PlayCalls.Should().Be(0);
+        player.ResumeCalls.Should().Be(0);
     }
 
     [Fact]
@@ -506,6 +547,7 @@ public class ProfileRoutingTests
 
         public Task<ConsoleControlProfilesConfig> GetAsync(CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(_config);
         }
 

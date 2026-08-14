@@ -14,6 +14,7 @@ using GsiHost.Adapters;
 using GsiHost.Dtos;
 using GsiHost.Mapping;
 using GsiHost.Mapping.Modules;
+using GsiHost.Players;
 using GsiHost.Services;
 using GsiHost.Tooling.Timeline;
 using Microsoft.AspNetCore.Hosting;
@@ -92,6 +93,44 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
 
         var status = await host.Client.GetAsync("/status");
         status.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public void MusicProviderTauon_WithoutReplace_RegistersTauonMusicPlayer()
+    {
+        using var host = CreateTestHost(
+            new FakeSpotifyClient(),
+            replaceMusicPlayer: false,
+            appSettingsJson: BuildAppSettingsJson("http://127.0.0.1:5292", musicProvider: "Tauon"));
+
+        host.Factory.Services.GetRequiredService<IMusicPlayer>().Should().BeOfType<TauonMusicPlayer>();
+    }
+
+    [Fact]
+    public void MusicProviderMock_WithoutReplace_RegistersMockMusicPlayer()
+    {
+        using var host = CreateTestHost(
+            new FakeSpotifyClient(),
+            replaceMusicPlayer: false,
+            appSettingsJson: BuildAppSettingsJson("http://127.0.0.1:5292", musicProvider: "Mock"));
+
+        host.Factory.Services.GetRequiredService<IMusicPlayer>().Should().BeOfType<MockMusicPlayer>();
+    }
+
+    [Fact]
+    public async Task StatusEndpoint_ReportsMusicPlayerFieldsFromInjectedPlayer()
+    {
+        var player = CreatePausedMockPlayer();
+        using var host = CreateTestHost(new FakeSpotifyClient(), player);
+
+        var response = await host.Client.GetAsync("/status");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = doc.RootElement;
+        root.GetProperty("musicProvider").GetString().Should().Be("Mock");
+        root.GetProperty("musicPlayerAvailable").GetBoolean().Should().BeTrue();
+        root.GetProperty("playbackState").GetString().Should().Be("Paused");
     }
 
     [Fact]
@@ -387,7 +426,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         deathResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         File.Exists(Path.Combine(host.TempRoot, "control-profiles.json")).Should().BeTrue();
-        player.ResumeCalls.Should().Be(1);
+        player.PlayCalls.Should().Be(1);
+        player.ResumeCalls.Should().Be(0);
         player.PauseCalls.Should().Be(1);
     }
 
@@ -404,6 +444,7 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
 
         roundStartResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         deathResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        player.PlayCalls.Should().Be(0);
         player.ResumeCalls.Should().Be(0);
         player.PauseCalls.Should().Be(0);
     }
@@ -443,7 +484,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         player.PlaybackSideEffectCalls.Should().Be(1);
-        player.ResumeCalls.Should().Be(1);
+        player.PlayCalls.Should().Be(1);
+        player.ResumeCalls.Should().Be(0);
         player.PauseCalls.Should().Be(0);
         player.VolumeCalls.Should().BeEmpty();
     }
@@ -460,7 +502,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             CreatePayload(2201, 100, round: 11, phase: "live"));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        player.ResumeCalls.Should().Be(1);
+        player.PlayCalls.Should().Be(1);
+        player.ResumeCalls.Should().Be(0);
         player.PauseCalls.Should().Be(0);
         player.VolumeCalls.Should().BeEmpty();
 
@@ -489,7 +532,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
 
         deathResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         (player.PauseCalls - pauseCallsBeforeDeath).Should().Be(1, "death must pause exactly once via the ActionMap path");
-        player.ResumeCalls.Should().Be(1);
+        player.PlayCalls.Should().Be(1);
+        player.ResumeCalls.Should().Be(0);
         player.VolumeCalls.Should().BeEmpty();
 
         var shadow = await host.Client.GetStringAsync("/diagnostics/music-shadow");
@@ -510,7 +554,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2400, 100, round: 13, phase: "freezetime"));
         await host.Client.PostAsJsonAsync("/gsi", CreatePayload(2401, 100, round: 13, phase: "live"));
 
-        player.ResumeCalls.Should().Be(1);
+        player.PlayCalls.Should().Be(1);
+        player.ResumeCalls.Should().Be(0);
 
         var shadow = await host.Client.GetStringAsync("/diagnostics/music-shadow");
         using var doc = JsonDocument.Parse(shadow);
@@ -1046,7 +1091,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         IMusicPlayer? musicPlayer = null,
         string gsiBaseUrl = "http://127.0.0.1:5292",
         string? appSettingsJson = null,
-        Action<string>? seedContentRoot = null)
+        Action<string>? seedContentRoot = null,
+        bool replaceMusicPlayer = true)
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "UndefaultIt.Tests", Guid.NewGuid().ToString("N"));
         var cs2Root = Path.Combine(tempRoot, "Counter-Strike Global Offensive");
@@ -1064,8 +1110,11 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
             builder.ConfigureServices(services =>
             {
                 services.AddSingleton<ISpotifyClient>(_ => spotifyClient);
-                services.AddSingleton<IMusicPlayer>(sp =>
-                    musicPlayer ?? new MockMusicPlayer(sp.GetRequiredService<ILogger<MockMusicPlayer>>()));
+                if (replaceMusicPlayer)
+                {
+                    services.AddSingleton<IMusicPlayer>(sp =>
+                        musicPlayer ?? new MockMusicPlayer(sp.GetRequiredService<ILogger<MockMusicPlayer>>()));
+                }
             });
         });
 
@@ -1231,7 +1280,8 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
         bool enableTimeline = false,
         bool enablePlaybackObserver = false,
         int playbackObserverPollIntervalSeconds = 2,
-        bool musicOrchestrationShadowMode = true)
+        bool musicOrchestrationShadowMode = true,
+        string musicProvider = "Mock")
     {
         return $$"""
         {
@@ -1258,7 +1308,7 @@ public sealed class GsiHostIntegrationTests : IClassFixture<WebApplicationFactor
           },
           "UseMockSpotify": true,
           "Music": {
-            "Provider": "Mock"
+            "Provider": "{{musicProvider}}"
           },
           "Tauon": {
             "BaseUrl": "http://127.0.0.1:7814",

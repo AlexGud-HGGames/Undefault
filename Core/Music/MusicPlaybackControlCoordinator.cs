@@ -106,7 +106,8 @@ public class MusicPlaybackControlCoordinator : IMusicPlaybackControl
                     return;
                 }
 
-                await _player.ResumeAsync(cancellationToken).ConfigureAwait(false);
+                // PlayAsync, not ResumeAsync: the adapter resume path re-reads status.
+                await _player.PlayAsync(cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("Playback resume for {EventKey}", eventKeyForLog ?? "(scenario)");
             });
     }
@@ -304,11 +305,6 @@ public class MusicPlaybackControlCoordinator : IMusicPlaybackControl
         string operation,
         CancellationToken cancellationToken)
     {
-        if (!await EnsureAvailableAsync(eventKeyForLog, cancellationToken).ConfigureAwait(false))
-        {
-            return null;
-        }
-
         var state = await _player.GetStateAsync(cancellationToken).ConfigureAwait(false);
         if (state is not null)
         {
@@ -316,7 +312,7 @@ public class MusicPlaybackControlCoordinator : IMusicPlaybackControl
         }
 
         _logger.LogWarning(
-            "Event {EventKey} matched {Operation}, but the player has no readable playback state.",
+            "Music player is not available for {EventKey} ({Operation}).",
             eventKeyForLog ?? "(scenario)",
             operation);
         return null;

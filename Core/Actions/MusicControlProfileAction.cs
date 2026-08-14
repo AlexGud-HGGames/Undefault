@@ -100,6 +100,10 @@ public sealed class MusicControlProfileAction : IEventAction
                     break;
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Control profile action failed for {EventKey}", normalizedEvent.EventKey);

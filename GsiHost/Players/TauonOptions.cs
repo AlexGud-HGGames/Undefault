@@ -23,7 +23,7 @@ public sealed class TauonOptions
     /// </summary>
     /// <value>
     /// The timeout in seconds. The default is 2. Values below 1 are clamped to 1 by
-    /// <see cref="TauonMusicPlayer"/>.
+    /// <see cref="TauonMusicPlayer.ConfigureClient"/>.
     /// </value>
     public int TimeoutSeconds { get; set; } = 2;
 }

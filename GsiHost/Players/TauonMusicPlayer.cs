@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Core.Music;
-using Microsoft.Extensions.Options;
 
 namespace GsiHost.Players;
 
@@ -8,12 +7,18 @@ namespace GsiHost.Players;
 /// Tauon Music Box adapter over the verified remote-control HTTP API.
 /// </summary>
 /// <remarks>
-/// Calls loopback <c>GET /api1/*</c> paths only. One request is issued per action (resume may
-/// read status first). Failures are logged and swallowed except caller cancellation and
-/// out-of-range volume.
+/// Calls loopback <c>GET /api1/*</c> paths only. Each call uses
+/// <see cref="IHttpClientFactory.CreateClient(string)"/> so the named client's handler is not
+/// cached past the factory lifetime. Failures are logged and swallowed except caller cancellation
+/// and out-of-range volume.
 /// </remarks>
 public sealed class TauonMusicPlayer : IMusicPlayer
 {
+    /// <summary>
+    /// The named <see cref="IHttpClientFactory"/> client configured by the host.
+    /// </summary>
+    public const string HttpClientName = "Tauon";
+
     private const string PlayPath = "api1/play";
     private const string PausePath = "api1/pause";
     private const string NextPath = "api1/next";
@@ -25,30 +30,37 @@ public sealed class TauonMusicPlayer : IMusicPlayer
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<TauonMusicPlayer> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TauonMusicPlayer"/> class.
     /// </summary>
-    /// <param name="httpClient">The HTTP client used for Tauon remote API calls.</param>
-    /// <param name="options">The Tauon adapter options.</param>
+    /// <param name="httpClientFactory">The factory used to create a Tauon HTTP client per request.</param>
     /// <param name="logger">The logger used for fail-soft diagnostics.</param>
     public TauonMusicPlayer(
-        HttpClient httpClient,
-        IOptions<TauonOptions> options,
+        IHttpClientFactory httpClientFactory,
         ILogger<TauonMusicPlayer> logger)
     {
-        ArgumentNullException.ThrowIfNull(httpClient);
-        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(httpClientFactory);
         ArgumentNullException.ThrowIfNull(logger);
 
-        var opts = options.Value ?? new TauonOptions();
-        httpClient.BaseAddress = NormalizeBaseAddress(opts.BaseUrl);
-        httpClient.Timeout = TimeSpan.FromSeconds(Math.Max(1, opts.TimeoutSeconds));
-
-        _httpClient = httpClient;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Applies loopback origin and timeout to a named Tauon client.
+    /// </summary>
+    /// <param name="client">The client created by <see cref="IHttpClientFactory"/>.</param>
+    /// <param name="options">The Tauon adapter options.</param>
+    public static void ConfigureClient(HttpClient client, TauonOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(options);
+
+        client.BaseAddress = NormalizeBaseAddress(options.BaseUrl);
+        client.Timeout = TimeSpan.FromSeconds(Math.Max(1, options.TimeoutSeconds));
     }
 
     /// <inheritdoc />
@@ -122,7 +134,7 @@ public sealed class TauonMusicPlayer : IMusicPlayer
     {
         try
         {
-            using var response = await _httpClient.GetAsync(relativePath, cancellationToken).ConfigureAwait(false);
+            using var response = await CreateClient().GetAsync(relativePath, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning(
@@ -145,7 +157,7 @@ public sealed class TauonMusicPlayer : IMusicPlayer
     {
         try
         {
-            using var response = await _httpClient.GetAsync(StatusPath, cancellationToken).ConfigureAwait(false);
+            using var response = await CreateClient().GetAsync(StatusPath, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning(
@@ -270,6 +282,9 @@ public sealed class TauonMusicPlayer : IMusicPlayer
         value = default;
         return false;
     }
+
+    private HttpClient CreateClient()
+        => _httpClientFactory.CreateClient(HttpClientName);
 
     private static string? EmptyToNull(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value;

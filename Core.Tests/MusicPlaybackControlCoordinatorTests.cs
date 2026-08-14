@@ -28,6 +28,8 @@ public class MusicPlaybackControlCoordinatorTests
         await coordinator.TryPauseAsync("custom:music_pause");
 
         player.PauseCalls.Should().Be(1);
+        player.GetStateCalls.Should().Be(1);
+        player.IsAvailableCalls.Should().Be(0);
     }
 
     [Fact]
@@ -42,7 +44,10 @@ public class MusicPlaybackControlCoordinatorTests
 
         await coordinator.TryResumeAsync("custom:music_resume");
 
-        player.ResumeCalls.Should().Be(1);
+        player.PlayCalls.Should().Be(1);
+        player.ResumeCalls.Should().Be(0);
+        player.GetStateCalls.Should().Be(1);
+        player.IsAvailableCalls.Should().Be(0);
     }
 
     [Fact]
@@ -57,7 +62,10 @@ public class MusicPlaybackControlCoordinatorTests
 
         await coordinator.TryResumeAsync(EventKeys.RoundStart);
 
-        player.ResumeCalls.Should().Be(1);
+        player.PlayCalls.Should().Be(1);
+        player.ResumeCalls.Should().Be(0);
+        player.GetStateCalls.Should().Be(1);
+        player.IsAvailableCalls.Should().Be(0);
     }
 
     [Fact]
@@ -87,6 +95,7 @@ public class MusicPlaybackControlCoordinatorTests
 
         await coordinator.TryResumeAsync("custom:music_resume");
 
+        player.PlayCalls.Should().Be(0);
         player.ResumeCalls.Should().Be(0);
     }
 
@@ -149,7 +158,7 @@ public class MusicPlaybackControlCoordinatorTests
     }
 
     [Fact]
-    public void NullRecorder_DefaultsToNoOp_AndDoesNotThrow()
+    public async Task NullRecorder_DefaultsToNoOp_AndDoesNotThrow()
     {
         var player = new FakeMusicPlayer
         {
@@ -163,7 +172,7 @@ public class MusicPlaybackControlCoordinatorTests
             NullLogger<MusicPlaybackControlCoordinator>.Instance);
 
         var act = async () => await coordinator.TryPauseAsync("custom:music_pause");
-        act.Should().NotThrowAsync();
+        await act.Should().NotThrowAsync();
     }
 
     private static MusicPlaybackControlCoordinator BuildCoordinator(IMusicPlayer player)
@@ -200,15 +209,23 @@ internal sealed class FakeMusicPlayer : IMusicPlayer
     public int ResumeCalls { get; private set; }
     public int NextCalls { get; private set; }
     public int PreviousCalls { get; private set; }
+    public int GetStateCalls { get; private set; }
+    public int IsAvailableCalls { get; private set; }
     public List<int> VolumeCalls { get; } = new();
 
     public MusicPlayerCapabilities Capabilities => MusicPlayerCapabilities.Mvp;
 
     public Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult(Available);
+    {
+        IsAvailableCalls++;
+        return Task.FromResult(Available);
+    }
 
     public Task<MusicPlaybackState?> GetStateAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult(State);
+    {
+        GetStateCalls++;
+        return Task.FromResult(Available ? State : null);
+    }
 
     public Task PlayAsync(CancellationToken cancellationToken = default)
     {
