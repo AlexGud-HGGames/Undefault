@@ -73,7 +73,7 @@ Its current responsibilities:
 
 - normalize the GSI base URL
 - normalize the Spotify redirect URI
-- force `UseMockSpotify = false` for the console flow
+- leftover Spotify is mock unless `--use-real-spotify`
 - resolve Spotify client credentials from multiple sources
 - support `--reset-spotify-secrets` and `--clear-spotify-secrets`
 - persist app credentials in encrypted local storage on Windows
@@ -205,7 +205,7 @@ The backend is currently a Minimal API host with these main routes:
 | `POST` | `/gsi` | receive CS2 GSI payloads |
 | `POST` | `/gsi/dota` | receive Dota 2 GSI payloads — **event logging only** (no rules engine / Spotify actions yet) |
 | `POST` | `/gsi/reset` | reset detector, snapshot store, recent events, timeline session, and Dota/playback observer baselines |
-| `GET` | `/status` | current app/runtime status |
+| `GET` | `/status` | GSI plus `IMusicPlayer` fields (`musicProvider`, `musicPlayerAvailable`, `playbackState`); leftover Spotify is `leftoverSpotifyStatus` |
 | `GET` | `/events` | recent normalized events |
 | `GET` | `/timeline` | recent unified timeline (GSI + playback + dota) — **intent_capture only** |
 | `GET` | `/timeline/episodes` | intent-episode windows (reserved — empty until a future intent source is added) — **intent_capture only** |

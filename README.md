@@ -46,7 +46,7 @@ dotnet run --project .\Cs2Simulator
 
 Then open `http://127.0.0.1:5292/status`. Watch the host console for `round_start` / `death`.
 
-Today `--quick` still means mock **Spotify**. After `PIVOT-3` / `PIVOT-5` it means `Music:Provider=Mock`.
+`--quick` sets `Music:Provider=Mock`. `GET /status` reports GSI plus `IMusicPlayer` fields; leftover Spotify on that payload is not proof of Tauon.
 
 Full runbook: **[docs/](docs/README.md)** · Tauon (target): **[docs/tauon-integration.md](docs/tauon-integration.md)** · architecture: **[docs/backend-architecture.md](docs/backend-architecture.md)**
 

@@ -30,10 +30,10 @@ dotnet run --project .\GsiHost -- --skip-smart-track-warmup
 
 | Flag | Use when |
 | --- | --- |
-| `--quick` | Mock Spotify, skip CS2 setup and Smart Track warmup |
-| `--mvp` | One-command MVP: `intent_capture` + Timeline + PlaybackObserver ON in memory (does not mutate `appsettings.json`) |
+| `--quick` | Mock music player (`Music:Provider=Mock`); skip CS2 setup and Smart Track warmup |
+| `--mvp` | Legacy observe+record: `intent_capture` + Timeline + PlaybackObserver ON in memory (no automation; does not mutate `appsettings.json`) |
 | `--intent-capture` | Map `/timeline` and register `PlaybackStateObserver` |
-| `--scenario-playback` | Force default end-user mode (GSI rules drive Spotify) |
+| `--scenario-playback` | Force default end-user mode (GSI rules drive `IMusicPlayer`, not Spotify) |
 | `--skip-cs2-setup` | Real Spotify without automatic CS2 cfg install |
 | `--skip-smart-track-warmup` | Faster startup without Smart Track preload |
 | `--reset-spotify-secrets` | Overwrite saved Spotify `CLIENT_ID` |
