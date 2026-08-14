@@ -39,14 +39,14 @@ public readonly record struct Speed(double Multiplier)
         }
 
         var trimmed = text.Trim();
-        if (trimmed.EndsWith("x", StringComparison.OrdinalIgnoreCase))
-        {
-            trimmed = trimmed[..^1];
-        }
-
         if (string.Equals(trimmed, "max", StringComparison.OrdinalIgnoreCase))
         {
             return Max;
+        }
+
+        if (trimmed.EndsWith("x", StringComparison.OrdinalIgnoreCase))
+        {
+            trimmed = trimmed[..^1];
         }
 
         if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
