@@ -1,6 +1,6 @@
 # Music provider architecture (target)
 
-Approved 2026-08-14. **Not implemented yet.** Current live path is still `IEventAction` → `ISpotifyPlaybackControl` → `ISpotifyClient`. See [product-pivot-2026-08-14.md](product-pivot-2026-08-14.md).
+Approved 2026-08-14. Implemented in-repo (`PIVOT-1`–`PIVOT-8`). Live path: `IEventAction` → `IMusicPlaybackControl` → `IMusicPlayer` → `TauonMusicPlayer` or `MockMusicPlayer`. Leftover Spotify types remain until `PIVOT-10`. See [product-pivot-2026-08-14.md](product-pivot-2026-08-14.md).
 
 ## Principle
 

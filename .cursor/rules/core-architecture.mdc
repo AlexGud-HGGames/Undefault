@@ -10,8 +10,8 @@ alwaysApply: false
 - Use modular snapshots and small, composable mappers.
 - Prefer string event keys for routing and profile matching.
 - Keep `EventDetector` stateful and driven by options, not hardcoded behavior.
-- Playback goes through `IMusicPlayer` / `IMusicPlaybackControl` once those types exist. Do not put Tauon URLs or Spotify OAuth in Core.
-- Until the pivot lands, existing `ISpotifyClient` types remain; new automation must not add more Spotify-only assumptions to rules/detectors.
+- Playback goes through `IMusicPlayer` / `IMusicPlaybackControl`. Do not put Tauon URLs or Spotify OAuth in Core.
+- Leftover `ISpotifyClient` types remain until `PIVOT-10`; new automation must not add Spotify-only assumptions to rules/detectors.
 - Add or update unit tests when changing diffing, detection, routing, or action behavior.
 
 ## Example

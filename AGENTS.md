@@ -7,7 +7,7 @@ Internal constraints for Cursor / coding agents working on this repo. Not part o
 - `UndefaultIt` is a Windows-first local .NET backend: game events drive an external music player.
 - Current runtime focus: `CS2` + `GsiHost`.
 - **Approved target (2026-08-14):** Tauon via `IMusicPlayer`; default rules `round_start → resume`, `death → pause`. See [docs/product-pivot-2026-08-14.md](docs/product-pivot-2026-08-14.md).
-- **Current code:** still `spotify.control_profile` with `round_start → duck` / `death → restore_volume`. Do not implement the pivot until the product owner assigns a `PIVOT-*` task.
+- **Current code:** `music.control_profile` with `round_start → resume` / `death → pause` through `IMusicPlayer` (Tauon default, Mock for `--quick`). Leftover Spotify types remain until `PIVOT-10`. Do not add a Spotify adapter. `PIVOT-9` is still the live Tauon smoke.
 
 ## Modules
 

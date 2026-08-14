@@ -2,7 +2,7 @@
 
 The product MVP after [2026-08-14](product-pivot-2026-08-14.md) is Tauon automation, not Spotify observe+record.
 
-**This checklist is the target for `PIVOT-9`.** It is not runnable on current `main` (still Spotify duck/restore). The old UND-64 checklist is in [archive/release-checklist-intent-capture-mvp.md](archive/release-checklist-intent-capture-mvp.md).
+**This checklist is `PIVOT-9` (manual live Tauon smoke).** Automated coverage for `PIVOT-1`–`PIVOT-8` is in-repo (`dotnet test`). The old UND-64 checklist is in [archive/release-checklist-intent-capture-mvp.md](archive/release-checklist-intent-capture-mvp.md).
 
 ## Target prerequisites
 
@@ -15,7 +15,7 @@ The product MVP after [2026-08-14](product-pivot-2026-08-14.md) is Tauon automat
 
 ### Tauon running
 
-- [ ] Host starts with `Music:Provider=Tauon` (default after pivot).
+- [ ] Host starts with `Music:Provider=Tauon` (default).
 - [ ] `GET http://127.0.0.1:5292/status` → 200.
 - [ ] Simulator (or CS2) emits `round_start` → Tauon resumes (`/api1/play` if paused/stopped).
 - [ ] `death` → Tauon pauses (`/api1/pause`).

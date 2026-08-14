@@ -6,13 +6,13 @@
 
 The first target player is **Tauon Music Box**. Spotify is leftover code on `main`, not a product backend ([docs/spotify-constraints.md](docs/spotify-constraints.md)).
 
-> **Code vs docs (2026-08-14):** The approved direction is in [docs/product-pivot-2026-08-14.md](docs/product-pivot-2026-08-14.md). `main` still talks to Spotify (`round_start → duck`, `death → restore_volume`). Tauon wiring is backlog `PIVOT-*` in [docs/roadmap.md](docs/roadmap.md).
+> **Code vs docs (2026-08-14):** The approved direction is in [docs/product-pivot-2026-08-14.md](docs/product-pivot-2026-08-14.md). `PIVOT-1`–`PIVOT-8` are in-repo: default rules are `round_start → resume`, `death → pause` via Tauon/`IMusicPlayer`. Leftover Spotify code remains until `PIVOT-10`. Live Tauon smoke is `PIVOT-9`.
 
 ## Highlights
 
 - **Layered architecture** — `Core` (domain) / `GsiHost` (ASP.NET Minimal APIs) / `Cs2Simulator`
 - **Event pipeline** — snapshot diff → detector → rules engine → actions (config-driven, no YAML scenario engine)
-- **Target device layer** — `IMusicPlayer` (Tauon + mock). Not implemented yet; live path is still Spotify Web API.
+- **Device layer** — `IMusicPlayer` (Tauon default, Mock for `--quick`). Leftover Spotify types are not the live automation path.
 - **Local CS2 simulator** with scripted scenarios — develop and test without launching the game
 - **xUnit** — three test projects + GitHub Actions CI on `windows-latest`
 

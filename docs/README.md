@@ -2,7 +2,7 @@
 
 Long-form documentation for UndefaultIt. The [repository README](../README.md) is the short overview. Start with the [product pivot](product-pivot-2026-08-14.md) if you need the current direction.
 
-**Code vs docs:** architecture and Tauon pages describe the **approved target**. [Backend architecture](backend-architecture.md) and [quick launch](quick-launch.md) describe **what `main` does today** (still Spotify). Implementation backlog: [roadmap.md](roadmap.md).
+**Code vs docs:** live automation is Tauon/`IMusicPlayer` (`PIVOT-1`–`PIVOT-8`). Leftover Spotify remains until `PIVOT-10`. Live Tauon smoke: `PIVOT-9` in [roadmap.md](roadmap.md).
 
 ## Product
 
@@ -11,7 +11,7 @@ Long-form documentation for UndefaultIt. The [repository README](../README.md) i
 | [Product pivot (2026-08-14)](product-pivot-2026-08-14.md) | Locked direction: automation layer, Tauon first |
 | [Roadmap](roadmap.md) | `PIVOT-*` tasks, current vs target, later work |
 | [Music provider architecture](music-provider-architecture.md) | Target `IMusicPlayer` / coordinator / config |
-| [Tauon integration](tauon-integration.md) | Remote API, security, target setup (adapter not in code yet) |
+| [Tauon integration](tauon-integration.md) | Remote API, security, setup (`TauonMusicPlayer` in host) |
 | [Playback policy](spotify-playback-policy-boundary.md) | Local control, not a soundtrack |
 | [Spotify constraints](spotify-constraints.md) | Why Spotify is not a product backend; agent do-nots |
 

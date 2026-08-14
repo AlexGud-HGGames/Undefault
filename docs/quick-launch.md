@@ -2,13 +2,9 @@
 
 Start `GsiHost` for local iteration.
 
-> **WARNING — legacy / pre-pivot flags.** Spotify-specific flags and commands in this file (`--use-mock-spotify`, `--use-real-spotify`, `--reset-spotify-secrets`, `--clear-spotify-secrets`, `--scenario-playback`, OAuth / `CLIENT_ID` notes) describe the **current `main` binary only**. They are not target behavior. Do not copy them into the Tauon MVP.
+> **Leftover Spotify flags.** `--use-real-spotify`, `--reset-spotify-secrets`, `--clear-spotify-secrets`, and `/spotify/*` are leftover until `PIVOT-11`. They are not the product launch path.
 >
-> **Approved target:** `--quick` means `Music:Provider=Mock`; default non-quick provider is Tauon. See [roadmap.md](roadmap.md) (`PIVOT-5`, `PIVOT-11`) and [tauon-integration.md](tauon-integration.md).
->
-> Keep using the flags below until those tasks land. Do not remove them yet.
-
-**Current binary:** `--quick` is mock Spotify, no OAuth, no CS2 auto-setup. The Windows DPAPI store is still used when you run real Spotify. Tauon is not wired yet ([tauon-integration.md](tauon-integration.md), `PIVOT-4`).
+> **Current binary:** `--quick` sets `Music:Provider=Mock` (no Tauon, no CS2 auto-setup). Default non-quick provider is Tauon (`http://127.0.0.1:7814`). Leftover Spotify stays mock unless `--use-real-spotify`. See [roadmap.md](roadmap.md) and [tauon-integration.md](tauon-integration.md).
 
 ## Fastest start
 
@@ -16,7 +12,7 @@ Start `GsiHost` for local iteration.
 dotnet run --project .\GsiHost -- --quick
 ```
 
-`--quick` mode gives you a mock player (today: `MockSpotifyClient`), CS2 auto-setup skipped, Smart Track warmup skipped, and best-effort optional diagnostics that warn instead of failing startup.
+`--quick` mode uses `MockMusicPlayer`, skips CS2 auto-setup and Smart Track warmup, and keeps leftover Spotify on the mock client.
 
 ## Real Spotify, faster startup
 

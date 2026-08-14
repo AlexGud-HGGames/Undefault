@@ -1,6 +1,6 @@
 # Product pivot — 2026-08-14
 
-Locked product-owner decision. Implementation has **not** started. This document is the source of truth for the new direction. Older MVP notes (UND-64 `intent_capture`, Spotify-required) are historical.
+Locked product-owner decision. `PIVOT-1`–`PIVOT-8` are implemented in-repo. This document remains the source of truth for product direction. Older MVP notes (UND-64 `intent_capture`, Spotify-required) are historical.
 
 ## What Undefault is
 
@@ -42,7 +42,7 @@ Not in this MVP: `round_end`, victory/defeat tracks, playlist/queue/track-id pla
 
 ## Current code vs this decision
 
-Until the pivot tasks in [roadmap.md](roadmap.md) land, the running code is still Spotify-first (`ISpotifyClient`, `spotify.control_profile`, duck/restore). Docs describe the **approved target**; they also say when the live binary still does something else.
+`PIVOT-1`–`PIVOT-8` are in-repo. Live automation is `music.control_profile` with `round_start → resume` / `death → pause` through `IMusicPlayer` (Tauon default, Mock for `--quick`). Leftover Spotify types remain until `PIVOT-10`. Live Tauon smoke is `PIVOT-9`.
 
 ## Linear
 

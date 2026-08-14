@@ -1,14 +1,12 @@
 # Backend Architecture
 
-> **WARNING — current / pre-pivot Spotify implementation.** This document describes what `main` does today (`ISpotifyClient`, OAuth PKCE, `spotify.control_profile`, `round_start → duck` / `death → restore_volume`). It is **not** the target architecture. Do not implement from this file as if it were the approved product path.
+> **WARNING — mixed current vs leftover.** GSI, mapping, rules, and simulator sections below still describe the live pipeline. The **music/device path has pivoted** (`IMusicPlaybackControl` → `IMusicPlayer` → Tauon/Mock; `round_start → resume`, `death → pause`). Leftover Spotify OAuth/`ISpotifyClient` types remain until `PIVOT-10` and must not be treated as the product backend.
 >
-> **Target sources of truth:**
+> **Authoritative music path:**
 > - [product-pivot-2026-08-14.md](product-pivot-2026-08-14.md)
 > - [music-provider-architecture.md](music-provider-architecture.md)
 > - [tauon-integration.md](tauon-integration.md)
 > - [roadmap.md](roadmap.md)
->
-> Until `PIVOT-*` lands, the running binary still matches this file. After the pivot, prefer those four documents over this one for implementation decisions.
 
 ## Purpose
 
@@ -18,8 +16,9 @@ What `main` does today:
 
 - `GsiHost` is the runtime entry point
 - CS2 Game State Integration posts to the local backend
-- live playback still goes through Spotify (`ISpotifyClient`, OAuth PKCE, process-local tokens)
-- default gameplay automation is still `round_start -> duck` and `death -> restore_volume`
+- live playback goes through `IMusicPlayer` (Tauon default, Mock for `--quick`)
+- default gameplay automation is `round_start -> resume` and `death -> pause`
+- leftover Spotify OAuth/`ISpotifyClient` types remain until `PIVOT-10`
 - further behavior is expressed through `RulesEngine.ActionMap` and `control-profiles.json`
 
 ## High-Level Solution Shape
@@ -38,10 +37,11 @@ host --> mapper[GsiSnapshotMapper]
 mapper --> snapshot[GameSnapshot]
 snapshot --> rules[RulesEngine]
 rules --> actions[IEventAction]
-actions --> spotify[SpotifyClient]
 actions --> logs[ApplicationLogs]
-actions --> playback[ISpotifyPlaybackControl]
-playback --> spotify
+actions --> playback[IMusicPlaybackControl]
+playback --> player[IMusicPlayer]
+player --> tauon[TauonMusicPlayer]
+player --> mock[MockMusicPlayer]
 ```
 
 Inside **`RulesEngine`**, each snapshot runs through **`SnapshotDiffer`** (vs the stored previous snapshot), then **`EventDetector`**, then **`RulesEngineOptions.ActionMap`** dispatches to **`IEventAction`** implementations.

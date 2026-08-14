@@ -1,6 +1,6 @@
 # Tauon integration
 
-Approved target for the first music backend. **The Tauon adapter is not in the codebase yet.** Current `GsiHost` still talks to Spotify. Tracked as `PIVOT-4` in [roadmap.md](roadmap.md).
+Approved target for the first music backend. **`TauonMusicPlayer` is in `GsiHost/Players`.** Default provider is Tauon (`Music:Provider=Tauon`). Leftover Spotify types remain until `PIVOT-10`. Live process smoke is `PIVOT-9` in [roadmap.md](roadmap.md).
 
 Tauon Music Box is a desktop player for the user's own library. Undefault controls it over HTTP. The two projects stay independent: no fork, no Tauon source changes, no outreach to the Tauon author unless a verified API gap blocks a scoped feature.
 
@@ -62,12 +62,12 @@ Wiki last edited 2022; source also has `GET /api1/stop`. MVP does not need stop.
 }
 ```
 
-## Target smoke (after `PIVOT-*` lands)
+## Smoke (`PIVOT-9`)
 
 1. Start Tauon with remote control enabled.
-2. Start Undefault with `Music:Provider=Tauon` (default after the pivot).
+2. Start Undefault with `Music:Provider=Tauon` (default).
 3. Run `dotnet run --project .\Cs2Simulator`.
 4. `round_start` resumes Tauon; `death` pauses Tauon.
 5. Repeat with Tauon **not** running: host stays up, music actions fail in logs, GSI still works.
 
-Until those tasks land, `--quick` still means mock **Spotify**, and live automation still ducks/restores Spotify volume.
+`--quick` selects `Music:Provider=Mock`. Leftover Spotify flags remain until `PIVOT-11`.

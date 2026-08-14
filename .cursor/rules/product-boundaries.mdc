@@ -19,7 +19,7 @@ Supersedes the UND-64 `intent_capture` observe+record slice as the **product** M
 
 - Default automation target: `round_start → resume`, `death → pause`.
 - Do not implement `round_end`, playlists, track-id playback, Dota music actions, or UI in that slice.
-- Current `main` may still be Spotify duck/restore until `PIVOT-*` tasks land. Do not pretend the adapter exists.
+- Current `main` implements that automation via `IMusicPlayer` / Tauon (Mock for `--quick`). Leftover Spotify code remains until `PIVOT-10`. Do not add a Spotify adapter.
 
 Source: [docs/product-pivot-2026-08-14.md](docs/product-pivot-2026-08-14.md), [docs/roadmap.md](docs/roadmap.md).
 
