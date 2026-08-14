@@ -1,10 +1,18 @@
 # Backend Architecture
 
+> **WARNING — current / pre-pivot Spotify implementation.** This document describes what `main` does today (`ISpotifyClient`, OAuth PKCE, `spotify.control_profile`, `round_start → duck` / `death → restore_volume`). It is **not** the target architecture. Do not implement from this file as if it were the approved product path.
+>
+> **Target sources of truth:**
+> - [product-pivot-2026-08-14.md](product-pivot-2026-08-14.md)
+> - [music-provider-architecture.md](music-provider-architecture.md)
+> - [tauon-integration.md](tauon-integration.md)
+> - [roadmap.md](roadmap.md)
+>
+> Until `PIVOT-*` lands, the running binary still matches this file. After the pivot, prefer those four documents over this one for implementation decisions.
+
 ## Purpose
 
 This document describes the **current** backend as implemented on `main`.
-
-Approved product direction (Tauon / `IMusicPlayer`, `round_start → resume`, `death → pause`) is **not** this file. See [product-pivot-2026-08-14.md](product-pivot-2026-08-14.md), [music-provider-architecture.md](music-provider-architecture.md), and [roadmap.md](roadmap.md).
 
 What `main` does today:
 
@@ -336,7 +344,7 @@ UND-22 introduced `IMusicOrchestrationFacade.EvaluateShadow(AdapterObservation)`
 
 The bounded ring (`InMemoryShadowMusicSnapshotSink`, 32 entries) is exposed read-only at `GET /diagnostics/music-shadow` for parity inspection between facade output and the legacy `round_start -> duck` / `death -> restore_volume` outcomes. The endpoint is debug surface, not user-facing product behavior, and is mapped in both runtime modes during the migration window.
 
-`appsettings.json` adds `MusicOrchestration:ShadowMode` (default `true`). When `false`, `GsiProcessingService` skips the facade entirely and the diagnostics endpoint returns `{ latest: null, recent: [] }`. See [docs/rules-engine-migration.md](rules-engine-migration.md) for the staged plan, including Phase B (shrink `ActionMap`).
+`appsettings.json` adds `MusicOrchestration:ShadowMode` (default `true`). When `false`, `GsiProcessingService` skips the facade entirely and the diagnostics endpoint returns `{ latest: null, recent: [] }`. See [rules-engine-migration.md](rules-engine-migration.md) for the historical Phase A shadow path. Do not implement Phase B/C for the Tauon MVP; [roadmap.md](roadmap.md) `PIVOT-*` is authoritative.
 
 ## Current Default Runtime Behavior
 

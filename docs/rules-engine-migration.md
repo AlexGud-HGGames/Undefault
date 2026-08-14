@@ -1,6 +1,13 @@
 # Rules engine migration — single orchestration entry
 
-> **Status (2026-08-14):** The Tauon pivot (`PIVOT-*`) keeps `ActionMap` → control-profile as the live side-effect path. Do not also enable live mixer/facade playback in that slice. Shadow diagnostics may stay.
+> **CURRENT PIVOT OVERRIDE (2026-08-14):** Do **not** implement the historical Phase A/B/C facade migration for the current Tauon MVP.
+>
+> The active path is:
+> `ActionMap → music.control_profile → IMusicPlaybackControl → IMusicPlayer → TauonMusicPlayer`
+>
+> [roadmap.md](roadmap.md) / `PIVOT-*` tasks are authoritative for current implementation.
+>
+> Keep `ActionMap` as the live side-effect path. Do not enable live mixer/facade playback in this slice. Shadow diagnostics may stay. Phase A/B/C below is historical/deferred.
 
 ## Problem
 
@@ -20,6 +27,9 @@ GSI ticks now cross a title adapter before legacy rule evaluation:
 `AdapterObservation.Clock`, `NeutralContext`, `SafetyFacts`, and title domain events are the handoff for Phase A facade work. The facade should consume those adapter outputs instead of re-parsing CS2 DTOs or reading CS2-only module strings directly.
 
 ## Phased approach
+
+> **Deferred — ignore for current implementation.** Phase A/B/C is a historical/legacy facade migration plan. It is **not** part of `PIVOT-1`..`PIVOT-N`. For the Tauon pivot, keep `ActionMap` live and do not shrink it, delegate music keys to the facade, or make facade playback live. Follow [roadmap.md](roadmap.md) instead.
+
 
 ### Phase A — Facade behind existing host
 

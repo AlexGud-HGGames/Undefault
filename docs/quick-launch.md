@@ -2,9 +2,13 @@
 
 Start `GsiHost` for local iteration.
 
-**Current binary:** `--quick` is mock Spotify, no OAuth, no CS2 auto-setup. The Windows DPAPI store is still used when you run real Spotify. Tauon is not wired yet ([tauon-integration.md](tauon-integration.md), `PIVOT-4`).
+> **WARNING — legacy / pre-pivot flags.** Spotify-specific flags and commands in this file (`--use-mock-spotify`, `--use-real-spotify`, `--reset-spotify-secrets`, `--clear-spotify-secrets`, `--scenario-playback`, OAuth / `CLIENT_ID` notes) describe the **current `main` binary only**. They are not target behavior. Do not copy them into the Tauon MVP.
+>
+> **Approved target:** `--quick` means `Music:Provider=Mock`; default non-quick provider is Tauon. See [roadmap.md](roadmap.md) (`PIVOT-5`, `PIVOT-11`) and [tauon-integration.md](tauon-integration.md).
+>
+> Keep using the flags below until those tasks land. Do not remove them yet.
 
-**Approved target:** `--quick` means `Music:Provider=Mock`; default non-quick provider is Tauon. Until `PIVOT-5`, the flags below are what the host actually implements.
+**Current binary:** `--quick` is mock Spotify, no OAuth, no CS2 auto-setup. The Windows DPAPI store is still used when you run real Spotify. Tauon is not wired yet ([tauon-integration.md](tauon-integration.md), `PIVOT-4`).
 
 ## Fastest start
 
