@@ -1,6 +1,8 @@
 # Core.Music
 
-Contracts for a **future** safety-first dynamic music engine. Not the Tauon pause/resume MVP.
+Player MVP contracts live here: `IMusicPlayer`, `IMusicPlaybackControl`, `MockMusicPlayer`. HTTP for Tauon stays in the host adapter.
+
+The mixer types below are contracts for a **future** safety-first dynamic music engine. Not the Tauon pause/resume MVP.
 
 See [docs/product-pivot-2026-08-14.md](../../docs/product-pivot-2026-08-14.md). Specs:
 

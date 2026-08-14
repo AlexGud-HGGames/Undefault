@@ -192,16 +192,82 @@ public class ProfileRoutingTests
     }
 
     [Fact]
+    public async Task MusicControlProfileAction_ResumesOnRoundStart_AndPausesOnDeath()
+    {
+        var player = new FakeMusicPlayer
+        {
+            Available = true,
+            State = new MusicPlaybackState(PlaybackStatus.Paused, Track: null, VolumePercent: 55)
+        };
+        var controlProfileService = new FakeControlProfileService(new ConsoleControlProfilesConfig(
+            "console-default",
+            new List<ConsoleControlProfile>
+            {
+                new("console-default", "Console Default", new List<EventControlRule>
+                {
+                    new(EventKeys.RoundStart, MusicControlCommands.Resume),
+                    new(EventKeys.Death, MusicControlCommands.Pause)
+                })
+            }));
+        var playback = new MusicPlaybackControlCoordinator(
+            player,
+            Options.Create(new SpotifyVolumeDuckOptions()),
+            NullLogger<MusicPlaybackControlCoordinator>.Instance);
+        var action = new MusicControlProfileAction(
+            playback,
+            controlProfileService,
+            NullLogger<MusicControlProfileAction>.Instance);
+
+        await action.ExecuteAsync(NormalizedEvent.RoundStart(BuildSnapshot(DateTimeOffset.UtcNow, 100, isAlive: true)));
+        await action.ExecuteAsync(NormalizedEvent.RoundStart(BuildSnapshot(DateTimeOffset.UtcNow.AddMilliseconds(10), 100, isAlive: true)));
+        await action.ExecuteAsync(NormalizedEvent.Death(BuildSnapshot(DateTimeOffset.UtcNow.AddSeconds(1), 0, isAlive: false)));
+        await action.ExecuteAsync(NormalizedEvent.Death(BuildSnapshot(DateTimeOffset.UtcNow.AddSeconds(1.1), 0, isAlive: false)));
+
+        player.ResumeCalls.Should().Be(1);
+        player.PauseCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task MusicControlProfileAction_WhenPlayerUnavailable_DoesNotThrow()
+    {
+        var player = new FakeMusicPlayer { Available = false };
+        var controlProfileService = new FakeControlProfileService(new ConsoleControlProfilesConfig(
+            "console-default",
+            new List<ConsoleControlProfile>
+            {
+                new("console-default", "Console Default", new List<EventControlRule>
+                {
+                    new(EventKeys.RoundStart, MusicControlCommands.Resume),
+                    new(EventKeys.Death, MusicControlCommands.Pause)
+                })
+            }));
+        var playback = new MusicPlaybackControlCoordinator(
+            player,
+            Options.Create(new SpotifyVolumeDuckOptions()),
+            NullLogger<MusicPlaybackControlCoordinator>.Instance);
+        var action = new MusicControlProfileAction(
+            playback,
+            controlProfileService,
+            NullLogger<MusicControlProfileAction>.Instance);
+
+        var act = async () =>
+        {
+            await action.ExecuteAsync(NormalizedEvent.RoundStart(BuildSnapshot(DateTimeOffset.UtcNow, 100, isAlive: true)));
+            await action.ExecuteAsync(NormalizedEvent.Death(BuildSnapshot(DateTimeOffset.UtcNow.AddSeconds(1), 0, isAlive: false)));
+        };
+
+        await act.Should().NotThrowAsync();
+        player.ResumeCalls.Should().Be(0);
+        player.PauseCalls.Should().Be(0);
+    }
+
+    [Fact]
     public async Task SpotifyControlProfileAction_DucksOnRoundStart_AndRestoresOnDeath()
     {
-        var spotifyClient = new FakeSpotifyClient
+        var player = new FakeMusicPlayer
         {
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 72,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
+            Available = true,
+            State = new MusicPlaybackState(PlaybackStatus.Playing, Track: null, VolumePercent: 72)
         };
         var controlProfileService = new FakeControlProfileService(new ConsoleControlProfilesConfig(
             "console-default",
@@ -213,14 +279,14 @@ public class ProfileRoutingTests
                     new(EventKeys.Death, MusicControlCommands.RestoreVolume)
                 })
             }));
-        var playback = new SpotifyPlaybackControlCoordinator(
-            spotifyClient,
+        var playback = new MusicPlaybackControlCoordinator(
+            player,
             Options.Create(new SpotifyVolumeDuckOptions
             {
                 MuteVolume = 0,
                 FallbackRestoreVolume = 50
             }),
-            NullLogger<SpotifyPlaybackControlCoordinator>.Instance);
+            NullLogger<MusicPlaybackControlCoordinator>.Instance);
         var action = new SpotifyControlProfileAction(
             playback,
             controlProfileService,
@@ -229,20 +295,17 @@ public class ProfileRoutingTests
         await action.ExecuteAsync(NormalizedEvent.RoundStart(BuildSnapshot(DateTimeOffset.UtcNow, 100, isAlive: true)));
         await action.ExecuteAsync(NormalizedEvent.Death(BuildSnapshot(DateTimeOffset.UtcNow.AddSeconds(1), 0, isAlive: false)));
 
-        spotifyClient.VolumeCalls.Should().Equal(10, 72);
+        player.VolumeCalls.Should().Equal(10, 72);
+        action.Key.Should().Be(MusicControlProfileAction.LegacySpotifyKey);
     }
 
     [Fact]
     public async Task SpotifyControlProfileAction_PausesAndResumesWhenConfigured()
     {
-        var spotifyClient = new FakeSpotifyClient
+        var player = new FakeMusicPlayer
         {
-            CurrentPlayback = new PlaybackState(
-                IsPlaying: true,
-                VolumePercent: 55,
-                Track: null,
-                DeviceId: "device",
-                DeviceName: "Desktop")
+            Available = true,
+            State = new MusicPlaybackState(PlaybackStatus.Playing, Track: null, VolumePercent: 55)
         };
         var controlProfileService = new FakeControlProfileService(new ConsoleControlProfilesConfig(
             "console-default",
@@ -254,10 +317,10 @@ public class ProfileRoutingTests
                     new(EventKeys.Death, MusicControlCommands.Resume)
                 })
             }));
-        var playback = new SpotifyPlaybackControlCoordinator(
-            spotifyClient,
+        var playback = new MusicPlaybackControlCoordinator(
+            player,
             Options.Create(new SpotifyVolumeDuckOptions()),
-            NullLogger<SpotifyPlaybackControlCoordinator>.Instance);
+            NullLogger<MusicPlaybackControlCoordinator>.Instance);
         var action = new SpotifyControlProfileAction(
             playback,
             controlProfileService,
@@ -266,8 +329,56 @@ public class ProfileRoutingTests
         await action.ExecuteAsync(NormalizedEvent.RoundStart(BuildSnapshot(DateTimeOffset.UtcNow, 100, isAlive: true)));
         await action.ExecuteAsync(NormalizedEvent.Death(BuildSnapshot(DateTimeOffset.UtcNow.AddSeconds(1), 0, isAlive: false)));
 
-        spotifyClient.PauseCalls.Should().Be(1);
-        spotifyClient.ResumeCalls.Should().Be(1);
+        player.PauseCalls.Should().Be(1);
+        player.ResumeCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task MusicControlProfileAction_RoutesNextAndPrevious()
+    {
+        var player = new FakeMusicPlayer
+        {
+            Available = true,
+            State = new MusicPlaybackState(PlaybackStatus.Playing, Track: null, VolumePercent: 40)
+        };
+        var controlProfileService = new FakeControlProfileService(new ConsoleControlProfilesConfig(
+            "console-default",
+            new List<ConsoleControlProfile>
+            {
+                new("console-default", "Console Default", new List<EventControlRule>
+                {
+                    new("custom:next", MusicControlCommands.Next),
+                    new("custom:previous", MusicControlCommands.Previous)
+                })
+            }));
+        var playback = new MusicPlaybackControlCoordinator(
+            player,
+            Options.Create(new SpotifyVolumeDuckOptions()),
+            NullLogger<MusicPlaybackControlCoordinator>.Instance);
+        var action = new MusicControlProfileAction(
+            playback,
+            controlProfileService,
+            NullLogger<MusicControlProfileAction>.Instance);
+
+        var snapshot = BuildSnapshot(DateTimeOffset.UtcNow, 100, isAlive: true);
+        await action.ExecuteAsync(new NormalizedEvent(
+            EventType.RoundStart,
+            "custom:next",
+            snapshot.Timestamp,
+            EventContext.FromSnapshot(snapshot),
+            Duration: null,
+            Detail: null));
+        var previousSnapshot = BuildSnapshot(DateTimeOffset.UtcNow.AddSeconds(1), 100, isAlive: true);
+        await action.ExecuteAsync(new NormalizedEvent(
+            EventType.RoundStart,
+            "custom:previous",
+            previousSnapshot.Timestamp,
+            EventContext.FromSnapshot(previousSnapshot),
+            Duration: null,
+            Detail: null));
+
+        player.NextCalls.Should().Be(1);
+        player.PreviousCalls.Should().Be(1);
     }
 
     [Fact]

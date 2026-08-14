@@ -9,6 +9,8 @@ public static class MusicControlCommands
     public const string Resume = "resume";
     public const string Duck = "duck";
     public const string RestoreVolume = "restore_volume";
+    public const string Next = "next";
+    public const string Previous = "previous";
 
     public static string Normalize(string? command)
     {
@@ -22,7 +24,9 @@ public static class MusicControlCommands
         return string.Equals(command, Pause, StringComparison.OrdinalIgnoreCase)
             || string.Equals(command, Resume, StringComparison.OrdinalIgnoreCase)
             || string.Equals(command, Duck, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(command, RestoreVolume, StringComparison.OrdinalIgnoreCase);
+            || string.Equals(command, RestoreVolume, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(command, Next, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(command, Previous, StringComparison.OrdinalIgnoreCase);
     }
 }
 
