@@ -10,8 +10,8 @@ Review for correctness and safety first, then maintainability and tests. Keep fi
 
 ## Stack context
 
-- **Core**: domain rules, GSI diffing, event keys, Spotify abstractions (`ISpotifyClient`, related types). No HTTP, no CS2 file I/O unless explicitly a Core concern.
-- **GsiHost**: ASP.NET Core minimal APIs, services, config, OAuth callback, CS2 setup, logging. Endpoints stay thin. This repo has no separate desktop UI project.
+- **Core**: domain rules, GSI diffing, event keys, playback abstractions (`IMusicPlayer` when present; today still `ISpotifyClient`). No vendor HTTP, no CS2 file I/O unless explicitly a Core concern.
+- **GsiHost**: ASP.NET Core minimal APIs, services, config, player adapters, leftover Spotify OAuth, CS2 setup, logging. Endpoints stay thin. This repo has no separate desktop UI project.
 - **Tests**: `Core.Tests` (unit), `GsiHost.Tests` (integration). Prefer targeted tests when behavior changes.
 
 ## Priority labels

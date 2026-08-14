@@ -1,66 +1,100 @@
 # Roadmap
 
-## MVP slice (2026-06-28)
+Product direction: [product-pivot-2026-08-14.md](product-pivot-2026-08-14.md).
 
-Product owner approved the first MVP slice (Linear umbrella UND-64): connect Spotify + connect CS2 + media key → playback control (observed) + record confirmed pause/resume with timestamps + persist to JSONL. The MVP runs in `intent_capture` runtime mode via one command:
+Undefault is a game-aware music automation layer. The first player backend is Tauon. Spotify is leftover code, not a provider to keep.
 
-```powershell
-dotnet run --project .\GsiHost -- --mvp
+This file is the working backlog while Linear Undefault is not connected from this workspace (MCP currently sees Counterplay). Copy `PIVOT-*` into Linear when that project is available. Do not implement from this list until the product owner asks for a specific issue.
+
+## How to read this
+
+| Column | Meaning |
+|---|---|
+| **Current code** | What `main` does today |
+| **Approved target** | What we are migrating to |
+| **PIVOT-n** | Implementation task, not started |
+
+## Current code (honest)
+
+- Pipeline: CS2 GSI → adapter → detector → `RulesEngine` → `spotify.control_profile`
+- Default rules: `round_start → duck`, `death → restore_volume`
+- Device: `ISpotifyClient` (real Web API or `MockSpotifyClient`)
+- `--mvp` still means `intent_capture` observe+record (UND-64), not Tauon automation
+- Dota: `POST /gsi/dota` logs only (UND-80)
+- Safety/mixer: shadow diagnostics only
+
+## Approved target MVP
+
+```text
+CS2 round_start → resume
+CS2 death       → pause
 ```
 
-Status:
+via `IMusicPlayer` → `TauonMusicPlayer` → Tauon HTTP. Mock provider for tests and `--quick`.
 
-- MVP #1 Spotify connect: PKCE OAuth works; UND-52 (mandatory `state` + verifier TTL) implemented, pending commit; per-session tokens accepted for MVP.
-- MVP #2 CS connect: `/gsi` ingestion + auto cfg install work; `CS2 GSI connected` console banner on first post (UND-66).
-- MVP #3 Media key → playback (observed): `--mvp` enables `intent_capture` + Timeline + PlaybackObserver; the user controls playback with the keyboard media play/pause key (Spotify handles it natively) and Undefault observes + records (UND-66 / UND-78; bound hotkeys + `/user-actions` removed).
-- MVP #4/#5 Record + persist: confirmed `playback_paused` / `playback_resumed` with timestamps appended to JSONL in `intent_capture`; no-ops skipped (UND-65 Done).
+## Milestone 0 — Docs (this change)
 
-Post-MVP: auto-scenarios, safety/mixer engine, neutral-context as live control, multi-game/Dota, scenario rule packs, packaging, persistent tokens. See the Linear UND-37 tree and the "Later" section below.
+| ID | Task | Status |
+|---|---|---|
+| PIVOT-0 | Reframe docs, archive stale Spotify text, publish this backlog | Done in-repo |
 
-## Current State
+## Milestone 1 — Provider abstraction
 
-The active product path is now the console-first backend:
+Do not redesign GSI/rules. Smallest `IMusicPlayer` only.
 
-- `GsiHost` is the runtime entry point
-- CS2 GSI auto-setup is working against the local host
-- real Spotify OAuth is integrated and verified
-- Spotify app credentials can be stored in the encrypted local secret store
-- the OAuth callback is working on `http://127.0.0.1:5292/callback`
-- the access token is still process-local and stored in memory after auth
-- the current default gameplay behavior is `round_start -> duck volume` and `death -> restore volume`
+| ID | Task | Depends | Acceptance |
+|---|---|---|---|
+| PIVOT-1 | Add `IMusicPlayer`, `MusicPlaybackState`, `PlaybackStatus`, `MusicTrack`, `MusicPlayerCapabilities` in Core. No playlist/queue/seek. | PIVOT-0 | Types compile; Core has no Tauon HTTP |
+| PIVOT-2 | Evolve `ISpotifyPlaybackControl` → `IMusicPlaybackControl` using `IMusicPlayer`. Drop Spotify auth checks. Keep idempotent pause/resume, duck state, fail-soft. Keep `ISpotifyPlaybackControl` as a thin alias if that avoids a noisy diff. | PIVOT-1 | Existing coordinator tests retargeted; no `IsAuthenticated` on the generic path |
+| PIVOT-3 | `MockMusicPlayer` from `MockSpotifyClient` patterns. Always available. `--quick` / `Music:Provider=Mock`. | PIVOT-1 | Core tests run without Tauon or Spotify |
 
-## Current Direction
+**Non-goals:** live mixer, new command architecture, deleting Spotify.
 
-The next phase should optimize for fast backend iteration, not new UI flows.
+## Milestone 2 — Tauon adapter
 
-The main goal is to make gameplay-to-music behavior easy to express from **`RulesEngine.ActionMap`**, profile JSON, and the console so you can add, test, and evolve rules without first building editor screens. (Here “scenario” means profile- and map-driven behavior, not a separate YAML orchestration layer.)
+| ID | Task | Depends | Acceptance |
+|---|---|---|---|
+| PIVOT-4 | `TauonMusicPlayer` in the host/adapter layer (not Core). Verified `/api1` paths only. `HttpClient`, timeout, CT. 404 / refused / timeout / malformed JSON → unavailable. No retries. Resume = `/play` unless already playing. | PIVOT-1 | Unit tests with mocked HTTP; no live Tauon in CI |
+| PIVOT-5 | Host DI + config: `Music:Provider` = `Tauon` \| `Mock`. Default Tauon. `Tauon:BaseUrl` = `http://127.0.0.1:7814`. Do not register a user-facing Spotify provider. | PIVOT-2, PIVOT-3, PIVOT-4 | Switching provider does not put Tauon URLs in Core |
 
-## Now
+## Milestone 3 — Product defaults
 
-- keep the console bootstrap and host architecture stable
-- keep the default music-control behavior configurable from `control-profiles.json` with routing in `RulesEngine.ActionMap`
-- document the console-first setup path clearly enough that a new engineer can run and edit it without UI help
-- preserve the current working CS2 ingestion, Spotify OAuth callback, and encrypted secret storage flows
-- document the practical CS2 GSI event space so future profile work can target real available signals quickly
+| ID | Task | Depends | Acceptance |
+|---|---|---|---|
+| PIVOT-6 | Canonical action `music.control_profile`; keep `spotify.control_profile` alias. Default profile `round_start → resume`, `death → pause`. | PIVOT-2 | Simulator round/death drives those commands |
+| PIVOT-7 | Add `next` / `previous` to `MusicControlCommands` and the coordinator. | PIVOT-2, PIVOT-4 | Commands route; Tauon uses `/next` and `/back` |
 
-## Next
+**Non-goals:** `round_end`, victory music, playlist rules.
 
-- expand the console control profile with more CS2-driven scenarios once the basic off/on/duck path is stable
-- add more normalized gameplay events only when there is a concrete profile use case for them
-- improve backend diagnostics around active profile selection, event routing, and Spotify playback failures
-- add targeted regression coverage around config-driven scenario behavior and console startup
+## Milestone 4 — Tests and proof
 
-## Later
+| ID | Task | Depends | Acceptance |
+|---|---|---|---|
+| PIVOT-8 | Core: round_start→resume, death→pause, repeated events are idempotent. Tauon: play/pause/resume/next/previous/state/track/volume + refused/timeout/404/malformed/unexpected status. | PIVOT-3–7 | `dotnet test` green without Tauon |
+| PIVOT-9 | Manual proof: Tauon up → simulator resume/pause; Tauon down → host + GSI still run. | PIVOT-8 | Matches Definition of Done in the pivot note |
 
-- persistent Spotify OAuth token storage across process restarts
-- richer scenario packs around bomb flow, round conclusions, kill streaks, and low-health moments
-- optional UI support for the console-defined control profile model after the backend shape proves stable
-- better end-to-end automation around backend startup, CS2 setup, and Spotify authorization
-- Dota 2 support only after the CS2 backend path is mature
+## Milestone 5 — Remove leftover Spotify (after green)
+
+| ID | Task | Depends | Acceptance |
+|---|---|---|---|
+| PIVOT-10 | Delete unused Spotify OAuth/client/action paths once Tauon+mock own playback. Do not add `SpotifyMusicPlayer`. | PIVOT-9 | Automation path has no Spotify types |
+| PIVOT-11 | Rename leftover `--quick` / `/spotify/*` flags and comments to player/mock wording. | PIVOT-10 | README/quick-launch match running flags |
+
+## Later (not scheduled)
+
+Keep as specs, not current build work:
+
+- `round_end` detector (CS2 `phase=over` is mapped to `Unknown` today)
+- live safety mixer / coalescer (shadow already exists)
+- Dota adapter beyond logging (UND-45)
+- persistent tokens / packaging (Tauon-first; no tester Spotify app)
+- Jellyfin or other **non-Spotify** players
+- UI
 
 ## Guardrails
 
-- prefer small, explicit configuration over abstraction-heavy profile systems
-- keep console/file setup as the source of truth until the profile shape settles
-- do not refactor the host architecture unless it clearly reduces friction for scenario development
-- do not break the verified `round_start` / `death` runtime while adding the new control profile path
+- Evolution, not a rewrite.
+- One playback side-effect path per GSI tick.
+- Do not rebuild a music player or a Spotify clone.
+- Tauon API is unstable; keep the adapter thin.
+- Safety still dominates adaptivity when that engine is wired; it is not the Tauon MVP.

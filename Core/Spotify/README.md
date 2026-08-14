@@ -1,10 +1,5 @@
-# Spotify
+# Spotify (leftover)
 
-Spotify abstractions, models, and clients live in this folder.
+Not a product path. Do not add features here. See [docs/spotify-constraints.md](../../docs/spotify-constraints.md).
 
-For the current app behavior and rules, see:
-
-- [Project README](../../README.md)
-- [Documentation index](../../docs/README.md)
-- [Backend architecture](../../docs/backend-architecture.md)
-- Cursor rules under `.cursor/rules/` for editor and agent conventions
+This folder still exists because `main` has not finished `PIVOT-10`. Target playback is `IMusicPlayer` → Tauon/mock.

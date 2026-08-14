@@ -1,8 +1,10 @@
 # Rules engine migration — single orchestration entry
 
+> **Status (2026-08-14):** The Tauon pivot (`PIVOT-*`) keeps `ActionMap` → control-profile as the live side-effect path. Do not also enable live mixer/facade playback in that slice. Shadow diagnostics may stay.
+
 ## Problem
 
-Running both `RulesEngine` (`ActionMap` → `IEventAction`) and a new **music session / safety** path in the same tick can **double-apply** Spotify side effects.
+Running both `RulesEngine` (`ActionMap` → `IEventAction`) and a new **music session / safety** path in the same tick can **double-apply** player side effects.
 
 ## Rule (non-negotiable)
 

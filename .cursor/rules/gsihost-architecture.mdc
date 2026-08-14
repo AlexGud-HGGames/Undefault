@@ -1,5 +1,5 @@
 ﻿---
-description: GsiHost rules for HTTP endpoints, CS2 setup, config, and Spotify hosting
+description: GsiHost rules for HTTP endpoints, CS2 setup, config, and player hosting
 globs: GsiHost/**/*.cs, GsiHost.Tests/**/*.cs
 alwaysApply: false
 ---
@@ -9,8 +9,10 @@ alwaysApply: false
 - Keep endpoints thin; move workflow logic into services.
 - Register host services in `Program.cs`, but keep domain decisions out of it.
 - CS2 setup belongs in `Cs2SetupService` and should stay config-driven.
-- Treat mock and real Spotify as runtime modes, not duplicated code paths.
+- Player adapters (Tauon HTTP, Spotify OAuth, mock) live in the host/adapter layer, not in Core event/rule code.
+- Treat mock vs real player as configuration (`Music:Provider`), not duplicated pipelines. Until that config exists, `--quick` still maps to mock Spotify — do not add a second parallel host path.
 - Keep logs short, informative, and low-noise.
+- Player failure must not crash GSI ingestion.
 - Add integration tests for endpoint, setup, and configuration changes.
 
 ## Example

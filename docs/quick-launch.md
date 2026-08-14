@@ -1,8 +1,10 @@
 # Quick Launch
 
-Start `GsiHost` for local iteration. Use `--quick` to bring the backend up immediately without CS2 auto-setup or real Spotify OAuth.
+Start `GsiHost` for local iteration.
 
-The normal startup path is Windows-only because it uses the encrypted Windows secret store (DPAPI, CurrentUser scope) for the Spotify `CLIENT_ID`. Real Spotify playback control also requires Spotify Premium and an active playback device.
+**Current binary:** `--quick` is mock Spotify, no OAuth, no CS2 auto-setup. The Windows DPAPI store is still used when you run real Spotify. Tauon is not wired yet ([tauon-integration.md](tauon-integration.md), `PIVOT-4`).
+
+**Approved target:** `--quick` means `Music:Provider=Mock`; default non-quick provider is Tauon. Until `PIVOT-5`, the flags below are what the host actually implements.
 
 ## Fastest start
 
@@ -10,7 +12,7 @@ The normal startup path is Windows-only because it uses the encrypted Windows se
 dotnet run --project .\GsiHost -- --quick
 ```
 
-`--quick` mode gives you mock Spotify (no OAuth, no credential prompts), CS2 auto-setup skipped, Smart Track warmup skipped, and best-effort optional diagnostics that warn instead of failing startup.
+`--quick` mode gives you a mock player (today: `MockSpotifyClient`), CS2 auto-setup skipped, Smart Track warmup skipped, and best-effort optional diagnostics that warn instead of failing startup.
 
 ## Real Spotify, faster startup
 
@@ -37,7 +39,7 @@ dotnet run --project .\GsiHost -- --skip-smart-track-warmup
 | `--reset-spotify-secrets` | Overwrite saved Spotify `CLIENT_ID` |
 | `--clear-spotify-secrets` | Wipe the encrypted credential store |
 
-See [manual-intent-timeline.md](manual-intent-timeline.md) for timeline / observe+record details, and [backend-architecture.md](backend-architecture.md) for the HTTP endpoint table.
+`--mvp` is the **legacy** UND-64 observe+record mode, not the Tauon product MVP. Timeline notes: [manual-intent-timeline.md](manual-intent-timeline.md). HTTP table: [backend-architecture.md](backend-architecture.md).
 
 ## Spotify credentials (PKCE, post-UND-47)
 

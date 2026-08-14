@@ -7,7 +7,8 @@ Write and revise developer-facing documentation for this repository. Keep it acc
 
 ## Product Context
 
-- Undefault is console-first. `GsiHost` is the HTTP backend for CS2 GSI, Spotify control, and setup. `Core` holds domain logic. There is no Avalonia/UI project in the solution.
+- Undefault is console-first. `GsiHost` is the HTTP backend for CS2 GSI, music-player control, and setup. `Core` holds domain logic. There is no Avalonia/UI project in the solution.
+- Product: game-aware automation of an external player (Tauon first). Separate **current code** from **approved target** when they differ ([docs/product-pivot-2026-08-14.md](docs/product-pivot-2026-08-14.md)).
 - Primary environment: Windows and PowerShell for root documentation unless the file is explicitly cross-platform.
 - .NET target: .NET 8. Check `README.md` and project files before changing versioned statements.
 
@@ -50,4 +51,4 @@ Write and revise developer-facing documentation for this repository. Keep it acc
 - Heading: `## Run the backend`
 - Lead-in: `From the repository root:`
 - Command: `dotnet run --project .\GsiHost`
-- Follow-up: `Then open the printed Spotify authorization URL if the console indicates OAuth is required.`
+- Follow-up: `Confirm the selected music provider is reachable, or use --quick for the mock player.`

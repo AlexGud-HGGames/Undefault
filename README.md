@@ -2,17 +2,19 @@
 
 [![CI](https://github.com/AlexGud-HGGames/Undefault/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AlexGud-HGGames/Undefault/actions/workflows/ci.yml)
 
-**CS2 Game State Integration → event pipeline → Spotify playback control** — a local Windows backend in .NET 8.
+**Game-aware music automation** — a local Windows backend in .NET 8. CS2 game state drives pause/resume (and later other commands) on the user's existing music player. Undefault does not own the music catalog. It is local playback control, not a synchronized soundtrack.
 
-UndefaultIt ducks or restores Spotify volume from live CS2 game state (e.g. `round_start` → duck, `death` → restore). It is local playback control, not a synchronized soundtrack.
+The first target player is **Tauon Music Box**. Spotify is leftover code on `main`, not a product backend ([docs/spotify-constraints.md](docs/spotify-constraints.md)).
+
+> **Code vs docs (2026-08-14):** The approved direction is in [docs/product-pivot-2026-08-14.md](docs/product-pivot-2026-08-14.md). `main` still talks to Spotify (`round_start → duck`, `death → restore_volume`). Tauon wiring is backlog `PIVOT-*` in [docs/roadmap.md](docs/roadmap.md).
 
 ## Highlights
 
-- **Layered architecture** — `Core` (domain) / `GsiHost` (ASP.NET Minimal APIs) / `Cs2Simulator` (~185 `.cs` files)
+- **Layered architecture** — `Core` (domain) / `GsiHost` (ASP.NET Minimal APIs) / `Cs2Simulator`
 - **Event pipeline** — snapshot diff → detector → rules engine → actions (config-driven, no YAML scenario engine)
-- **Spotify OAuth2 (PKCE)** + Windows DPAPI-encrypted local credential store
+- **Target device layer** — `IMusicPlayer` (Tauon + mock). Not implemented yet; live path is still Spotify Web API.
 - **Local CS2 simulator** with scripted scenarios — develop and test without launching the game
-- **xUnit** — three test projects (`Core.Tests`, `GsiHost.Tests`, `Cs2Simulator.Tests`) + GitHub Actions CI on `windows-latest`
+- **xUnit** — three test projects + GitHub Actions CI on `windows-latest`
 
 ## Architecture
 
@@ -25,65 +27,60 @@ flowchart LR
   diff --> detect[EventDetector]
   detect --> rules[RulesEngine]
   rules --> actions[IEventAction]
-  actions --> spotify[Spotify / mock]
+  actions --> player[IMusicPlayer]
+  player --> tauon[Tauon]
+  player --> mock[Mock]
 ```
 
-CS2 (or the simulator) posts JSON to the host. The host normalizes state, detects gameplay events, and runs configured actions against Spotify. Multi-title routing is already in place: CS2 is the full path; Dota 2 currently logs GSI events only (see below).
+CS2 (or the simulator) posts JSON to the host. The host normalizes state, detects gameplay events, and runs configured actions against the selected music player. Multi-title routing is in place: CS2 is the full path; Dota 2 currently logs GSI events only.
 
 ## Quick start (mock, ~2 min)
 
 ```powershell
-# Terminal 1 — host with mock Spotify (no OAuth, no CS2 install)
+# Terminal 1 — host with mock player (no real player, no CS2 install)
 dotnet run --project .\GsiHost -- --quick
 
 # Terminal 2 — local CS2 GSI simulator
 dotnet run --project .\Cs2Simulator
 ```
 
-Then open `http://127.0.0.1:5292/status`. Watch the host console for `round_start` / `death` and mock Spotify volume calls.
+Then open `http://127.0.0.1:5292/status`. Watch the host console for `round_start` / `death`.
 
-Full runbook (real Spotify, flags, endpoints, config): **[docs/](docs/README.md)** · architecture detail: **[docs/backend-architecture.md](docs/backend-architecture.md)**
+Today `--quick` still means mock **Spotify**. After `PIVOT-3` / `PIVOT-5` it means `Music:Provider=Mock`.
+
+Full runbook: **[docs/](docs/README.md)** · Tauon (target): **[docs/tauon-integration.md](docs/tauon-integration.md)** · architecture: **[docs/backend-architecture.md](docs/backend-architecture.md)**
 
 ## Project layout
 
 | Project | Role |
 | --- | --- |
-| `Core/` | Models, diffing, event detection, rules, Spotify abstractions |
-| `GsiHost/` | HTTP host, GSI mapping, OAuth, CS2 setup, control profiles |
+| `Core/` | Models, diffing, event detection, rules, playback abstractions |
+| `GsiHost/` | HTTP host, GSI mapping, CS2 setup, control profiles, player adapters |
 | `Cs2Simulator*` | Console + runtime + scenario packs that post realistic GSI payloads |
 | `*.Tests/` | Unit and integration coverage |
 
-## For game / Unity engineers
-
-Built as a **production-style .NET service outside Unity**: layered architecture, DI, config-driven rules, OAuth, encrypted secrets, simulators, and automated tests. Same habits transfer to Unity work — MVVM/DI, data-driven systems, tooling for designers/QA, and CI.
-
-**Multi-game direction (honest status):**
-
-- **CS2** — primary path: GSI → rules → Spotify actions
-- **Dota 2** — `POST /gsi/dota` logs game-state / death / pause transitions to the timeline today; a full adapter and Spotify wiring are planned next ([ingestion spec](docs/ingestion-spec-cs2-dota.md))
-- **Unity asset (planned)** — a separate package so game projects can talk to the same local player/control surface without owning the Spotify/OAuth stack themselves (not shipped yet)
-
 ## Status & limits
 
-- Windows-first (console bootstrap uses the encrypted Windows secret store)
-- Real Spotify control needs Premium and an active playback device
+- Windows-first (console bootstrap still uses the encrypted Windows store when Spotify OAuth is used)
 - No desktop UI in this repo — console checklist + local HTTP API
-- OAuth tokens are process-local (re-auth after restart)
-- Safety-first music architecture is documented; runtime integration is still partial
+- Tauon remote API (target) has no auth; use loopback; do not expose port 7814
+- Safety-first music architecture is documented; runtime integration is still shadow-only
+- Dota 2: `POST /gsi/dota` logs events; no adapter or music actions yet
 
 ## Docs
 
 | Doc | Contents |
 | --- | --- |
 | [docs/README.md](docs/README.md) | Documentation index |
-| [docs/quick-launch.md](docs/quick-launch.md) | Startup flags and failure handling |
-| [docs/backend-architecture.md](docs/backend-architecture.md) | Full pipeline, HTTP endpoints, config |
-| [docs/cs2-simulator.md](docs/cs2-simulator.md) | Simulator scenarios and CLI |
-| [docs/manual-intent-timeline.md](docs/manual-intent-timeline.md) | Timeline / observe+record MVP mode |
-| [docs/ingestion-spec-cs2-dota.md](docs/ingestion-spec-cs2-dota.md) | CS2 / Dota ingestion shape |
-| [docs/roadmap.md](docs/roadmap.md) | Forward-looking work |
+| [docs/product-pivot-2026-08-14.md](docs/product-pivot-2026-08-14.md) | Locked product direction |
+| [docs/roadmap.md](docs/roadmap.md) | `PIVOT-*` backlog |
+| [docs/tauon-integration.md](docs/tauon-integration.md) | Tauon remote API and target setup |
+| [docs/music-provider-architecture.md](docs/music-provider-architecture.md) | `IMusicPlayer` target |
+| [docs/spotify-constraints.md](docs/spotify-constraints.md) | Why Spotify is not a product backend |
+| [docs/quick-launch.md](docs/quick-launch.md) | Startup flags (current binary) |
+| [docs/backend-architecture.md](docs/backend-architecture.md) | Pipeline, HTTP, config as implemented today |
 
-Agent/contributor constraints for Cursor live in [AGENTS.md](AGENTS.md), not here.
+Agent/contributor constraints: [AGENTS.md](AGENTS.md).
 
 ## License
 

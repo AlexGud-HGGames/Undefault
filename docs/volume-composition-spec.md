@@ -1,5 +1,7 @@
 # Volume Composition Spec — single merge algebra
 
+> **Status (2026-08-14):** Later mixer work. Not required to ship Tauon pause/resume.
+
 This document fixes **one** normative pipeline so mixer output is reproducible and testable. **Priority without a formula is forbidden.**
 
 ## Intent classes

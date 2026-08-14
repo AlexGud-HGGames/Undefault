@@ -1,5 +1,7 @@
 # Music engine config and observability — schema v1
 
+> **Status (2026-08-14):** Later. Target player config for the pivot is `Music:Provider` + `Tauon:*` in [music-provider-architecture.md](music-provider-architecture.md), not this schema.
+
 ## Versioning
 
 - **`SchemaVersion`**: `1` for this document.

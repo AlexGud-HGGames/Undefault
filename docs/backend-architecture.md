@@ -2,23 +2,23 @@
 
 ## Purpose
 
-This document describes the current backend shape of UndefaultIt as it exists today.
+This document describes the **current** backend as implemented on `main`.
 
-The active product path is console-first:
+Approved product direction (Tauon / `IMusicPlayer`, `round_start → resume`, `death → pause`) is **not** this file. See [product-pivot-2026-08-14.md](product-pivot-2026-08-14.md), [music-provider-architecture.md](music-provider-architecture.md), and [roadmap.md](roadmap.md).
+
+What `main` does today:
 
 - `GsiHost` is the runtime entry point
 - CS2 Game State Integration posts to the local backend
-- real Spotify OAuth is supported and used in the normal console flow
-- Spotify app credentials can be stored in an encrypted local Windows secret store
-- the OAuth access token is still process-local and lives in memory
-- the default gameplay automation is `round_start -> duck` and `death -> restore_volume`
-- further behavior is expressed through `RulesEngine.ActionMap`, console control profiles, and optional legacy track profiles
+- live playback still goes through Spotify (`ISpotifyClient`, OAuth PKCE, process-local tokens)
+- default gameplay automation is still `round_start -> duck` and `death -> restore_volume`
+- further behavior is expressed through `RulesEngine.ActionMap` and `control-profiles.json`
 
 ## High-Level Solution Shape
 
 | Project | Responsibility |
 |---|---|
-| `Core` | Domain models, event detection, rules, Spotify abstractions, playback helpers |
+| `Core` | Domain models, event detection, rules, playback helpers (today still namespaced under `Core/Spotify`) |
 | `GsiHost` | ASP.NET Minimal API host, config persistence, CS2 setup, console bootstrap, JSON-backed profile files—the product entry point for real use |
 
 The backend is intentionally layered so that gameplay ingestion, event normalization, routing, and playback remain distinct concerns.
@@ -339,6 +339,8 @@ The bounded ring (`InMemoryShadowMusicSnapshotSink`, 32 entries) is exposed read
 `appsettings.json` adds `MusicOrchestration:ShadowMode` (default `true`). When `false`, `GsiProcessingService` skips the facade entirely and the diagnostics endpoint returns `{ latest: null, recent: [] }`. See [docs/rules-engine-migration.md](rules-engine-migration.md) for the staged plan, including Phase B (shrink `ActionMap`).
 
 ## Current Default Runtime Behavior
+
+This is **what `main` does today**. Approved target is `resume` / `pause` via Tauon ([roadmap.md](roadmap.md) `PIVOT-6`).
 
 The default `GsiHost/appsettings.json` routes:
 

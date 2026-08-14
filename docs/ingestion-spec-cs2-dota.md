@@ -21,7 +21,7 @@ Implemented, landed:
 - `POST /gsi/dota` accepts a minimal, loosely-typed `DotaGsiPayloadDto` (`provider`/`map`/`player`/`hero`, flat non-spectator shape only).
 - `DotaGsiLoggingService` detects `map.game_state` changes, `hero.alive` flips, and `map.paused` flips across consecutive POSTs and appends them to the same timeline CS2 uses, under `source: "dota"` (`GsiHost/Tooling/Timeline/TimelineModels.cs`: `TimelineSources.Dota`, `TimelineDotaEvents`).
 - `GameAdapterRegistration` for `dota2` (appid 570) is registered so `/diagnostics/adapters` lists it, with a description flagging "event logging only, no rules engine yet".
-- No `IGameAdapter<DotaGsiPayloadDto>`, no `AdapterObservation`/`NeutralContext`/`SafetyFacts` mapping, and no Spotify side effects triggered by Dota events. `GsiProcessingService`/`IRulesEngine` are not involved in the Dota path at all.
+- No `IGameAdapter<DotaGsiPayloadDto>`, no `AdapterObservation`/`NeutralContext`/`SafetyFacts` mapping, and no music-player actions from Dota events. `GsiProcessingService`/`IRulesEngine` are not involved in the Dota path at all.
 
 This is deliberately a smaller, separate slice from the "future shape" below — see [README.md](../README.md#dota-2-gsi-event-logging-only) for setup and the recorded event list.
 

@@ -1,6 +1,8 @@
 # Failure Safety Spec — stale input, API, and device behavior
 
-This document defines **conservative** behavior when game data or Spotify is unreliable. It complements [music-safety-state-spec.md](music-safety-state-spec.md).
+> **Status (2026-08-14):** Later safety-engine spec. For Tauon MVP, "player down" means log and continue GSI — see [music-provider-architecture.md](music-provider-architecture.md). Spotify-specific SLA wording below is leftover from the old device layer.
+
+This document defines **conservative** behavior when game data or the music player is unreliable. It complements [music-safety-state-spec.md](music-safety-state-spec.md).
 
 ## Honest scope: Spotify Web API
 

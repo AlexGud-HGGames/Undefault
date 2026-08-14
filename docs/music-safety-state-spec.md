@@ -1,5 +1,7 @@
 # MusicSafetyState — authoritative safety contract
 
+> **Status (2026-08-14):** Binding for a future safety engine, not for the Tauon pause/resume MVP. Shadow facade may already report `Safe`/`Danger`. Do not make Tauon HTTP depend on this contract in `PIVOT-1`–`PIVOT-9`.
+
 This document is the **single source of truth** for gameplay-safe music behavior. Adaptive music (defusal curves, freeze envelopes, floor volume) is **subordinate** to this contract.
 
 ## States

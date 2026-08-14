@@ -1,5 +1,7 @@
 # Mixer contract and device wiring
 
+> **Status (2026-08-14):** Later work. Tauon MVP talks to `IMusicPlayer` from control-profile actions, not from the mixer. See [music-provider-architecture.md](music-provider-architecture.md).
+
 ## Responsibilities
 
 | Component | Input | Output |

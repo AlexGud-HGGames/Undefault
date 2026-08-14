@@ -1,5 +1,7 @@
 # Release Pipeline Design (UND-31)
 
+> **Status (2026-08-14):** Packaging later is Tauon-first. Spotify client_id / quota / PKCE sections below are obsolete as product scope. Agent constraints: [spotify-constraints.md](spotify-constraints.md). Do not implement a Spotify tester app from this file.
+
 Design / decision-only report. No CI workflow, no packaging script, no `*.csproj`
 or `*.json` edits land from this issue. Implementation, when approved, is filed
 as separately scoped Linear issues — see "Suggested follow-up implementation

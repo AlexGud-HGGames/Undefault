@@ -1,5 +1,7 @@
 # Stability and device layer — evaluation tick, coalescing, emergency lane
 
+> **Status (2026-08-14):** Later. Tauon MVP: one HTTP call per action, no coalescer. Replace "Spotify" below with "the selected `IMusicPlayer`" when this engine is wired.
+
 ## Two clocks
 
 | Layer | Cadence | Responsibility |

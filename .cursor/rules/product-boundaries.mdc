@@ -1,24 +1,28 @@
 ---
-description: Product boundaries for Undefault scenarios, safety, and Spotify control
+description: Product boundaries for Undefault automation, safety, and playback control
 alwaysApply: true
 ---
 
 # Product Boundaries
 
-- Describe Undefault as local game-state-aware Spotify playback control, not a synchronized soundtrack.
+- Describe Undefault as a game-aware music automation layer that controls an external player. It is not a synchronized soundtrack and it does not own the catalog.
+- First player backend: Tauon (remote HTTP). Spotify is leftover code, not a product provider ([docs/spotify-constraints.md](docs/spotify-constraints.md)).
 - Keep CS2 as the first game, but avoid making shared Core/music contracts depend on CS2-only terms when a neutral concept exists.
-- Safety dominates adaptivity: `Danger` must override scenario output, mixer/envelope gain, profile restore commands, and future automated behavior.
-- Avoid double Spotify side effects: one orchestration entry should apply playback changes per GSI evaluation tick.
-- `Hotkeys + Timeline` is tester/product-owner tooling only; it is not client UI, not a scenario engine, and not automatic rule generation.
-- Use timeline/manual intent data to discover candidate scenarios, then create explicit reviewed scenario tasks.
+- Core must not contain Tauon- or Spotify-specific HTTP/OAuth. Provider details stay in adapters.
+- Safety dominates adaptivity when that engine is live: `Danger` overrides scenario output, mixer/envelope gain, profile restore, and future automated behavior. The Tauon MVP does not wire live mixer side effects.
+- One orchestration entry applies playback changes per GSI evaluation tick.
+- Timeline / leftover observe-mode is tester tooling, not the product MVP.
 
-## MVP slice decision (2026-06-28)
+## Product pivot (2026-08-14)
 
-Product owner approved, for the first MVP slice, an exception to the "Hotkeys + Timeline = tester-only" rule above:
+Supersedes the UND-64 `intent_capture` observe+record slice as the **product** MVP.
 
-- The MVP ships in `intent_capture` runtime mode. Hotkey-driven playback control and playback-state event recording are MVP **end-user** features for this slice (not tester-only tooling).
-- Confirmed playback-state transitions (`playback_paused` / `playback_resumed`) are recorded with timestamps and persisted to JSONL so automation scenarios can be built later.
-- Auto-scenarios (`round_start -> duck`, `death -> restore_volume`) and the safety-first music engine remain **Post-MVP**.
-- The tester-only framing is superseded **only for the MVP slice**; the original boundary still applies to Post-MVP work unless explicitly changed.
+- Default automation target: `round_start → resume`, `death → pause`.
+- Do not implement `round_end`, playlists, track-id playback, Dota music actions, or UI in that slice.
+- Current `main` may still be Spotify duck/restore until `PIVOT-*` tasks land. Do not pretend the adapter exists.
 
-Source: Linear document "MVP scope decision — 2026-06-28 (intent_capture MVP)" and umbrella issue UND-64.
+Source: [docs/product-pivot-2026-08-14.md](docs/product-pivot-2026-08-14.md), [docs/roadmap.md](docs/roadmap.md).
+
+## Historical (2026-06-28)
+
+The UND-64 exception (hotkeys/observe as end-user MVP) is **closed as product direction**. Code for `--mvp` / timeline may still exist. Treat it as legacy tester tooling unless a new issue revives it.
